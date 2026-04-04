@@ -1,0 +1,25 @@
+server:
+  port: ${SERVER_PORT}
+
+spring:
+  application:
+    name: ktz-history
+  rabbitmq:
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT}
+    username: ${RABBITMQ_USER}
+    password: ${RABBITMQ_PASSWORD}
+  datasource:
+    url: ${POSTGRES_URL:jdbc:postgresql://postgres:5432/ktz}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html

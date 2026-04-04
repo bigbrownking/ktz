@@ -10,6 +10,9 @@ import java.time.Instant;
 public class TelemetryData {
     public enum Type { TE33A, KZ8A }
 
+    private String locomotiveNumber; // "TE33A-001"
+    private String locomotiveName;   // "Астана-Кокшетау
+
     private Type type;
     private Instant timestamp;
 

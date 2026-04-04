@@ -1,45 +1,58 @@
 server:
-  port: 8080
+  port: ${SERVER_PORT}
 
 spring:
   application:
     name: ktz-gateway
-  kafka:
-    bootstrap-servers: kafka:9092
+  r2dbc:
+    url: r2dbc:postgresql://postgres:5432/${POSTGRES_DB}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+  minio:
+    url: http://minio:9000
+    access-key: ${MINIO_USER}
+    secret-key: ${MINIO_PASSWORD}
+    bucket: users
   cloud:
     gateway:
       routes:
         - id: simulator
-          uri: http://simulator:8081
+          uri: http://simulator:${SIMULATOR_PORT}
           predicates:
             - Path=/simulator/**
-
         - id: telemetry
-          uri: http://telemetry:8082
+          uri: http://telemetry:${TELEMETRY_PORT}
           predicates:
             - Path=/telemetry/**
-
         - id: history
-          uri: http://history:8083
+          uri: http://history:${HISTORY_PORT}
           predicates:
             - Path=/history/**
-
         - id: simulator-swagger
-          uri: http://simulator:8081
+          uri: http://simulator:${SIMULATOR_PORT}
           predicates:
             - Path=/simulator/v3/api-docs/**
-
         - id: telemetry-swagger
-          uri: http://telemetry:8082
+          uri: http://telemetry:${TELEMETRY_PORT}
           predicates:
             - Path=/telemetry/v3/api-docs/**
-
         - id: history-swagger
-          uri: http://history:8083
+          uri: http://history:${HISTORY_PORT}
           predicates:
             - Path=/history/v3/api-docs/**
           filters:
             - RewritePath=/history/(?<segment>.*), /${segment}
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION}
+  refresh:
+    expiration: ${JWT_REFRESH_EXPIRATION}
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

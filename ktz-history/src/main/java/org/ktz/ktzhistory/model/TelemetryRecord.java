@@ -21,6 +21,8 @@ public class TelemetryRecord {
 
     private Instant timestamp;
 
+    private String locomotiveNumber;
+    private String locomotiveName;
     private double speed;
     private double tractionForce;
     private double voltage;
@@ -41,6 +43,8 @@ public class TelemetryRecord {
 
     public static TelemetryRecord from(TelemetryData data) {
         TelemetryRecord record = new TelemetryRecord();
+        record.setLocomotiveNumber(data.getLocomotiveNumber());
+        record.setLocomotiveName(data.getLocomotiveName());
         record.setType(data.getType());
         record.setTimestamp(data.getTimestamp());
         record.setSpeed(data.getSpeed());

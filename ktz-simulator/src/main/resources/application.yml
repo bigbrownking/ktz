@@ -1,0 +1,27 @@
+server:
+  port: ${SERVER_PORT}
+
+spring:
+  application:
+    name: ktz-simulator
+  rabbitmq:
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT}
+    username: ${RABBITMQ_USER}
+    password: ${RABBITMQ_PASSWORD}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+telemetry:
+  frequency-hz: ${TELEMETRY_FREQUENCY_HZ}
+  locomotives:
+    - number: ${LOCO_1_NUMBER}
+      type: ${LOCO_1_TYPE}
+      name: ${LOCO_1_NAME}
+    - number: ${LOCO_2_NUMBER}
+      type: ${LOCO_2_TYPE}
+      name: ${LOCO_2_NAME}
