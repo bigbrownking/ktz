@@ -2,10 +2,10 @@ server:
   port: ${SERVER_PORT}
 
 minio:
-  url: ${MINIO_URL}
-  access-key: ${MINIO_USER}
-  secret-key: ${MINIO_PASSWORD}
-  bucket: ${MINIO_BUCKET}
+  url: ${MINIO_URL:http://minio:9000}
+  access-key: ${MINIO_USER:minioadmin}
+  secret-key: ${MINIO_PASSWORD:minioadmin}
+  bucket: ${MINIO_BUCKET:users}
 
 spring:
   application:
@@ -78,6 +78,8 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
     urls:
+      - name: gateway
+        url: /v3/api-docs
       - name: simulator
         url: /simulator/v3/api-docs
       - name: telemetry
@@ -86,3 +88,4 @@ springdoc:
         url: /history/v3/api-docs
   api-docs:
     enabled: true
+    path: /v3/api-docs
