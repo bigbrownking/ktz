@@ -21,6 +21,7 @@ public class TelemetryPublisher {
 
     @Scheduled(fixedRateString = "#{1000 / ${telemetry.frequency-hz}}")
     public void publish() {
+        if (!running) return;
         for (LocomotiveProperties.LocomotiveConfig loco : properties.getLocomotives()) {
             TelemetryData data = generator.generate(
                     loco.getType(), loco.getNumber(), loco.getName(),

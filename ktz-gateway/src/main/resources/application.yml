@@ -1,6 +1,12 @@
 server:
   port: ${SERVER_PORT}
 
+minio:
+  url: http://minio:9000
+  access-key: ${MINIO_USER}
+  secret-key: ${MINIO_PASSWORD}
+  bucket: users
+
 spring:
   application:
     name: ktz-gateway
@@ -12,11 +18,6 @@ spring:
     redis:
       host: ${REDIS_HOST}
       port: ${REDIS_PORT}
-  minio:
-    url: http://minio:9000
-    access-key: ${MINIO_USER}
-    secret-key: ${MINIO_PASSWORD}
-    bucket: users
   cloud:
     gateway:
       routes:
@@ -24,28 +25,48 @@ spring:
           uri: http://simulator:${SIMULATOR_PORT}
           predicates:
             - Path=/simulator/**
+          filters:
+            - StripPrefix=1
+
         - id: telemetry
           uri: http://telemetry:${TELEMETRY_PORT}
           predicates:
             - Path=/telemetry/**
+          filters:
+            - StripPrefix=1
+
         - id: history
           uri: http://history:${HISTORY_PORT}
           predicates:
             - Path=/history/**
-        - id: simulator-swagger
+          filters:
+            - StripPrefix=1
+
+        - id: swagger-webjars
+          uri: http://telemetry:${TELEMETRY_PORT}
+          predicates:
+            - Path=/webjars/**
+
+        - id: simulator-docs
           uri: http://simulator:${SIMULATOR_PORT}
           predicates:
             - Path=/simulator/v3/api-docs/**
-        - id: telemetry-swagger
+          filters:
+            - StripPrefix=1
+
+        - id: telemetry-docs
           uri: http://telemetry:${TELEMETRY_PORT}
           predicates:
             - Path=/telemetry/v3/api-docs/**
-        - id: history-swagger
+          filters:
+            - StripPrefix=1
+
+        - id: history-docs
           uri: http://history:${HISTORY_PORT}
           predicates:
             - Path=/history/v3/api-docs/**
           filters:
-            - RewritePath=/history/(?<segment>.*), /${segment}
+            - StripPrefix=1
 
 jwt:
   secret: ${JWT_SECRET}
@@ -63,3 +84,5 @@ springdoc:
         url: /telemetry/v3/api-docs
       - name: history
         url: /history/v3/api-docs
+  api-docs:
+    enabled: true
