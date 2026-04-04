@@ -2,70 +2,65 @@ server:
   port: ${SERVER_PORT}
 
 minio:
-  url: ${MINIO_URL:http://minio:9000}
-  access-key: ${MINIO_USER:minioadmin}
-  secret-key: ${MINIO_PASSWORD:minioadmin}
-  bucket: ${MINIO_BUCKET:users}
+  url: ${MINIO_URL}
+  access-key: ${MINIO_USER}
+  secret-key: ${MINIO_PASSWORD}
+  bucket: ${MINIO_BUCKET}
 
 spring:
   application:
     name: ktz-gateway
   r2dbc:
-    url: ${R2DBC_URL:r2dbc:postgresql://postgres:5432/ktz}
-    username: ${POSTGRES_USER:ktz}
-    password: ${POSTGRES_PASSWORD:ktz}
+    url: ${R2DBC_URL}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
   flyway:
-    url: jdbc:postgresql://postgres:5432/${POSTGRES_DB:ktz}
-    user: ${POSTGRES_USER:ktz}
-    password: ${POSTGRES_PASSWORD:ktz}
+    url: ${FLYWAY_URL}
+    user: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
     locations: classpath:db/migration
     baseline-on-migrate: true
     baseline-version: 0
     enabled: true
   data:
     redis:
-      host: ${REDIS_HOST}
-      port: ${REDIS_PORT}
+      host: ${SPRING_DATA_REDIS_HOST}
+      port: ${SPRING_DATA_REDIS_PORT}
   cloud:
     gateway:
       routes:
         - id: simulator
-          uri: http://simulator:${SIMULATOR_PORT}
+          uri: http://${SIMULATOR_HOST}:${SIMULATOR_PORT}
           predicates:
             - Path=/simulator/**
           filters:
             - StripPrefix=1
-
         - id: telemetry
-          uri: http://telemetry:${TELEMETRY_PORT}
+          uri: http://${TELEMETRY_HOST}:${TELEMETRY_PORT}
           predicates:
             - Path=/telemetry/**
           filters:
             - StripPrefix=1
-
         - id: history
-          uri: http://history:${HISTORY_PORT}
+          uri: http://${HISTORY_HOST}:${HISTORY_PORT}
           predicates:
             - Path=/history/**
           filters:
             - StripPrefix=1
-
         - id: simulator-docs
-          uri: http://simulator:${SIMULATOR_PORT}
+          uri: http://${SIMULATOR_HOST}:${SIMULATOR_PORT}
           predicates:
             - Path=/simulator/v3/api-docs/**
           filters:
             - StripPrefix=1
-
         - id: telemetry-docs
-          uri: http://telemetry:${TELEMETRY_PORT}
+          uri: http://${TELEMETRY_HOST}:${TELEMETRY_PORT}
           predicates:
             - Path=/telemetry/v3/api-docs/**
           filters:
             - StripPrefix=1
-
         - id: history-docs
-          uri: http://history:${HISTORY_PORT}
+          uri: http://${HISTORY_HOST}:${HISTORY_PORT}
           predicates:
             - Path=/history/v3/api-docs/**
           filters:
@@ -92,5 +87,3 @@ springdoc:
   api-docs:
     enabled: true
     path: /v3/api-docs
-
-
