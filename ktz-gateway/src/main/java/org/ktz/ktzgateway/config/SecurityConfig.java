@@ -18,6 +18,16 @@ public class SecurityConfig {
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .authorizeExchange(ex -> ex
                         .pathMatchers("/auth/**").permitAll()
+                        .pathMatchers(
+                                "/",
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/v3/api-docs/**",
+                                "/webjars/**",
+                                "/simulator/v3/api-docs/**",
+                                "/telemetry/v3/api-docs/**",
+                                "/history/v3/api-docs/**"
+                        ).permitAll()
                         .pathMatchers("/user/**").hasRole("ADMIN")
                         .pathMatchers("/route/**").hasAnyRole("USER", "ADMIN")
                         .anyExchange().authenticated()
