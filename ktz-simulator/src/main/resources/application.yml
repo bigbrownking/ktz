@@ -10,12 +10,6 @@ spring:
     username: ${RABBITMQ_USER}
     password: ${RABBITMQ_PASSWORD}
 
-springdoc:
-  api-docs:
-    path: /v3/api-docs
-  swagger-ui:
-    path: /swagger-ui.html
-
 telemetry:
   frequency-hz: ${TELEMETRY_FREQUENCY_HZ}
   locomotives:
@@ -25,3 +19,9 @@ telemetry:
     - number: ${LOCO_2_NUMBER}
       type: ${LOCO_2_TYPE}
       name: ${LOCO_2_NAME}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html

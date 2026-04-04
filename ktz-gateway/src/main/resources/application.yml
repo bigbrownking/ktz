@@ -14,6 +14,14 @@ spring:
     url: ${R2DBC_URL:r2dbc:postgresql://postgres:5432/ktz}
     username: ${POSTGRES_USER:ktz}
     password: ${POSTGRES_PASSWORD:ktz}
+  flyway:
+    url: jdbc:postgresql://postgres:5432/${POSTGRES_DB:ktz}
+    user: ${POSTGRES_USER:ktz}
+    password: ${POSTGRES_PASSWORD:ktz}
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+    enabled: true
   data:
     redis:
       host: ${REDIS_HOST}
@@ -41,11 +49,6 @@ spring:
             - Path=/history/**
           filters:
             - StripPrefix=1
-
-        - id: swagger-webjars
-          uri: http://telemetry:${TELEMETRY_PORT}
-          predicates:
-            - Path=/webjars/**
 
         - id: simulator-docs
           uri: http://simulator:${SIMULATOR_PORT}
@@ -89,3 +92,5 @@ springdoc:
   api-docs:
     enabled: true
     path: /v3/api-docs
+
+

@@ -2,11 +2,14 @@ package org.ktz.ktzgateway.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.server.SecurityWebFilterChain;
+import reactor.core.publisher.Mono;
 
 @Configuration
 @EnableWebFluxSecurity
@@ -35,6 +38,20 @@ public class SecurityConfig {
                 )
                 .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
                 .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((exchange, e) -> {
+                            exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+                            exchange.getResponse().getHeaders()
+                                    .setContentType(MediaType.APPLICATION_JSON);
+                            exchange.getResponse().getHeaders()
+                                    .remove("WWW-Authenticate");
+                            var body = "{\"error\":\"Unauthorized\",\"message\":\"Token required\"}";
+                            var buffer = exchange.getResponse().bufferFactory()
+                                    .wrap(body.getBytes());
+                            return exchange.getResponse()
+                                    .writeWith(Mono.just(buffer));
+                        })
+                )
                 .build();
     }
 
