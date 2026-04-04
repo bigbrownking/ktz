@@ -1,0 +1,52 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ktz-gateway
+  kafka:
+    bootstrap-servers: kafka:9092
+  cloud:
+    gateway:
+      routes:
+        - id: simulator
+          uri: http://simulator:8081
+          predicates:
+            - Path=/simulator/**
+
+        - id: telemetry
+          uri: http://telemetry:8082
+          predicates:
+            - Path=/telemetry/**
+
+        - id: history
+          uri: http://history:8083
+          predicates:
+            - Path=/history/**
+
+        - id: simulator-swagger
+          uri: http://simulator:8081
+          predicates:
+            - Path=/simulator/v3/api-docs/**
+
+        - id: telemetry-swagger
+          uri: http://telemetry:8082
+          predicates:
+            - Path=/telemetry/v3/api-docs/**
+
+        - id: history-swagger
+          uri: http://history:8083
+          predicates:
+            - Path=/history/v3/api-docs/**
+          filters:
+            - RewritePath=/history/(?<segment>.*), /${segment}
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: simulator
+        url: /simulator/v3/api-docs
+      - name: telemetry
+        url: /telemetry/v3/api-docs
+      - name: history
+        url: /history/v3/api-docs
