@@ -21,11 +21,11 @@ public class TelemetryPublisher {
 
     @Scheduled(fixedRateString = "#{1000 / ${telemetry.frequency-hz}}")
     public void publish() {
-        if (!running) return;
-
         for (LocomotiveProperties.LocomotiveConfig loco : properties.getLocomotives()) {
-            TelemetryData data = generator.generate(loco.getType(), loco.getNumber(), loco.getName());
-            log.info("Sending telemetry for {} ({})", loco.getName(), loco.getNumber());
+            TelemetryData data = generator.generate(
+                    loco.getType(), loco.getNumber(), loco.getName(),
+                    loco.getStartLat(), loco.getStartLon(),
+                    loco.getEndLat(), loco.getEndLon());
             rabbitTemplate.convertAndSend("telemetry.exchange", "telemetry.raw", data);
         }
     }

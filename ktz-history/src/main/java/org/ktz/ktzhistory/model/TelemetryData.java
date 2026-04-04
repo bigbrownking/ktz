@@ -8,6 +8,8 @@ import java.time.Instant;
 @Getter
 @Setter
 public class TelemetryData {
+    private double latitude;
+    private double longitude;
     public enum Type { TE33A, KZ8A }
 
     private String locomotiveNumber;

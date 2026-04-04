@@ -11,12 +11,19 @@ import java.util.Random;
 public class TelemetryGeneratorImpl implements TelemetryGenerator {
     private final Random rand = new Random();
 
-    public TelemetryData generate(TelemetryData.Type type, String number, String name) {
+    @Override
+    public TelemetryData generate(TelemetryData.Type type, String number,
+                                  String name, double startLat, double startLon,
+                                  double endLat, double endLon) {
         TelemetryData t = new TelemetryData();
         t.setType(type);
         t.setLocomotiveNumber(number);
         t.setLocomotiveName(name);
         t.setTimestamp(Instant.now());
+
+        double progress = rand.nextDouble();
+        t.setLatitude(startLat + (endLat - startLat) * progress);
+        t.setLongitude(startLon + (endLon - startLon) * progress);
 
         if (type == TelemetryData.Type.TE33A) {
             t.setEngineRpm(900 + rand.nextDouble() * 10);

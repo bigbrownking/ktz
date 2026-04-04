@@ -15,4 +15,5 @@ public class Route {
     private String destination;
     private String status;
     private Long userId;
+    private Long locomotiveId;
 }

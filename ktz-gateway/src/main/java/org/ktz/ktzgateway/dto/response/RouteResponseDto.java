@@ -12,4 +12,7 @@ public class RouteResponseDto {
     private String status;
     private Long userId;
     private String username;
+    private Long locomotiveId;
+    private String locomotiveName;
+    private String locomotiveNumber;
 }

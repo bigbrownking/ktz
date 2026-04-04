@@ -2,7 +2,8 @@ package org.ktz.ktzgateway.repository;
 
 import org.ktz.ktzgateway.model.Locomotive;
 import org.springframework.data.repository.reactive.ReactiveCrudRepository;
-import org.springframework.stereotype.Repository;
+import reactor.core.publisher.Mono;
 
-@Repository
-public interface LocomotiveRepository extends ReactiveCrudRepository<Locomotive, Long> {}
+public interface LocomotiveRepository extends ReactiveCrudRepository<Locomotive, Long> {
+    Mono<Locomotive> findByNumber(String number);
+}

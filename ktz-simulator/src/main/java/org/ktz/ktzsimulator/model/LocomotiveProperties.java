@@ -19,5 +19,9 @@ public class LocomotiveProperties {
         private String number;
         private TelemetryData.Type type;
         private String name;
+        private double startLat;
+        private double startLon;
+        private double endLat;
+        private double endLon;
     }
 }

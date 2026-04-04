@@ -10,6 +10,8 @@ import java.time.Instant;
 public class TelemetryData {
     public enum Type { TE33A, KZ8A }
 
+    private double latitude;   // широта
+    private double longitude;  // долгота
     private String locomotiveNumber; // "TE33A-001"
     private String locomotiveName;   // "Астана-Кокшетау
 
