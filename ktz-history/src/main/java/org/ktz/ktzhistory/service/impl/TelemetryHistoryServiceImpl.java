@@ -1,8 +1,9 @@
-package org.ktz.ktzhistory.service;
+package org.ktz.ktzhistory.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import org.ktz.ktzhistory.model.TelemetryRecord;
 import org.ktz.ktzhistory.repository.TelemetryRepository;
+import org.ktz.ktzhistory.service.TelemetryHistoryService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;

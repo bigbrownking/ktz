@@ -28,6 +28,9 @@ spring:
       port: ${SPRING_DATA_REDIS_PORT}
   cloud:
     gateway:
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Credentials Access-Control-Allow-Origin
+
       routes:
         - id: simulator
           uri: http://${SIMULATOR_HOST}:${SIMULATOR_PORT}
