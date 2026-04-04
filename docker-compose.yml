@@ -1,0 +1,114 @@
+version: '3.9'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    ports:
+      - "${REDIS_PORT}:${REDIS_PORT}"
+
+  simulator:
+    build:
+      context: .
+      dockerfile: ktz-simulator/Dockerfile
+    ports:
+      - "${SIMULATOR_PORT}:${SIMULATOR_PORT}"
+    depends_on:
+      - rabbitmq
+    environment:
+      SPRING_RABBITMQ_HOST: ${RABBITMQ_HOST}
+      SPRING_RABBITMQ_PORT: ${RABBITMQ_PORT}
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      SERVER_PORT: ${SIMULATOR_PORT}
+
+  telemetry:
+    build:
+      context: .
+      dockerfile: ktz-telemetry/Dockerfile
+    ports:
+      - "${TELEMETRY_PORT}:${TELEMETRY_PORT}"
+    depends_on:
+      - rabbitmq
+    environment:
+      SPRING_RABBITMQ_HOST: ${RABBITMQ_HOST}
+      SPRING_RABBITMQ_PORT: ${RABBITMQ_PORT}
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      SERVER_PORT: ${TELEMETRY_PORT}
+
+  history:
+    build:
+      context: .
+      dockerfile: ktz-history/Dockerfile
+    ports:
+      - "${HISTORY_PORT}:${HISTORY_PORT}"
+    depends_on:
+      - postgres
+      - rabbitmq
+    environment:
+      SPRING_DATASOURCE_URL: ${POSTGRES_URL}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      SPRING_RABBITMQ_HOST: ${RABBITMQ_HOST}
+      SPRING_RABBITMQ_PORT: ${RABBITMQ_PORT}
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      SERVER_PORT: ${HISTORY_PORT}
+
+  gateway:
+    build:
+      context: .
+      dockerfile: ktz-gateway/Dockerfile
+    ports:
+      - "${GATEWAY_PORT}:${GATEWAY_PORT}"
+    depends_on:
+      - simulator
+      - telemetry
+      - history
+      - redis
+    environment:
+      SPRING_REDIS_HOST: ${REDIS_HOST}
+      SPRING_REDIS_PORT: ${REDIS_PORT}
+      SERVER_PORT: ${GATEWAY_PORT}
+      SPRING_CLOUD_GATEWAY_ROUTES_0_ID: ${GATEWAY_ROUTE_0_ID}
+      SPRING_CLOUD_GATEWAY_ROUTES_0_URI: ${GATEWAY_ROUTE_0_URI}
+      SPRING_CLOUD_GATEWAY_ROUTES_0_PREDICATES_0: ${GATEWAY_ROUTE_0_PREDICATE}
+      SPRING_CLOUD_GATEWAY_ROUTES_1_ID: ${GATEWAY_ROUTE_1_ID}
+      SPRING_CLOUD_GATEWAY_ROUTES_1_URI: ${GATEWAY_ROUTE_1_URI}
+      SPRING_CLOUD_GATEWAY_ROUTES_1_PREDICATES_0: ${GATEWAY_ROUTE_1_PREDICATE}
+      SPRING_CLOUD_GATEWAY_ROUTES_2_ID: ${GATEWAY_ROUTE_2_ID}
+      SPRING_CLOUD_GATEWAY_ROUTES_2_URI: ${GATEWAY_ROUTE_2_URI}
+      SPRING_CLOUD_GATEWAY_ROUTES_2_PREDICATES_0: ${GATEWAY_ROUTE_2_PREDICATE}
+      SPRING_CLOUD_GATEWAY_ROUTES_3_ID: ${GATEWAY_ROUTE_3_ID}
+      SPRING_CLOUD_GATEWAY_ROUTES_3_URI: ${GATEWAY_ROUTE_3_URI}
+      SPRING_CLOUD_GATEWAY_ROUTES_3_PREDICATES_0: ${GATEWAY_ROUTE_3_PREDICATE}
+      SPRING_CLOUD_GATEWAY_ROUTES_4_ID: ${GATEWAY_ROUTE_4_ID}
+      SPRING_CLOUD_GATEWAY_ROUTES_4_URI: ${GATEWAY_ROUTE_4_URI}
+      SPRING_CLOUD_GATEWAY_ROUTES_4_PREDICATES_0: ${GATEWAY_ROUTE_4_PREDICATE}
+      SPRING_CLOUD_GATEWAY_ROUTES_5_ID: ${GATEWAY_ROUTE_5_ID}
+      SPRING_CLOUD_GATEWAY_ROUTES_5_URI: ${GATEWAY_ROUTE_5_URI}
+      SPRING_CLOUD_GATEWAY_ROUTES_5_PREDICATES_0: ${GATEWAY_ROUTE_5_PREDICATE}
+      SPRING_CLOUD_GATEWAY_ROUTES_5_FILTERS_0: ${GATEWAY_ROUTE_5_FILTER}
+
+volumes:
+  postgres_data:
