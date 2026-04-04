@@ -8,7 +8,6 @@ public class UserRequestDto {
     private String surname;
     private String username;
     private int age;
-    private String route;
     private String password;
     private String role;
     private Long locomotiveId;

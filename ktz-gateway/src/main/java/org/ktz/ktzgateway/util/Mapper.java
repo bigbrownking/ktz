@@ -16,7 +16,6 @@ public class Mapper {
         user.setSurname(dto.getSurname());
         user.setUsername(dto.getUsername());
         user.setAge(dto.getAge());
-        user.setRoute(dto.getRoute());
         user.setRole(dto.getRole());
         user.setLocomotiveId(dto.getLocomotiveId());
         return user;
@@ -29,7 +28,6 @@ public class Mapper {
                 .surname(user.getSurname())
                 .username(user.getUsername())
                 .age(user.getAge())
-                .route(user.getRoute())
                 .role(user.getRole())
                 .locomotiveId(user.getLocomotiveId())
                 .photoUrl(photoUrl)
@@ -61,7 +59,6 @@ public class Mapper {
         user.setSurname(dto.getSurname());
         user.setUsername(dto.getUsername());
         user.setAge(dto.getAge());
-        user.setRoute(dto.getRoute());
         user.setPassword(dto.getPassword());
         user.setRole(dto.getRole());
         user.setLocomotiveId(dto.getLocomotiveId());
