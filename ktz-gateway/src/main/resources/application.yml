@@ -2,18 +2,18 @@ server:
   port: ${SERVER_PORT}
 
 minio:
-  url: http://minio:9000
+  url: ${MINIO_URL}
   access-key: ${MINIO_USER}
   secret-key: ${MINIO_PASSWORD}
-  bucket: users
+  bucket: ${MINIO_BUCKET}
 
 spring:
   application:
     name: ktz-gateway
   r2dbc:
-    url: r2dbc:postgresql://postgres:5432/${POSTGRES_DB}
-    username: ${POSTGRES_USER}
-    password: ${POSTGRES_PASSWORD}
+    url: ${R2DBC_URL:r2dbc:postgresql://postgres:5432/ktz}
+    username: ${POSTGRES_USER:ktz}
+    password: ${POSTGRES_PASSWORD:ktz}
   data:
     redis:
       host: ${REDIS_HOST}

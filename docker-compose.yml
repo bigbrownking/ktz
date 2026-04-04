@@ -9,6 +9,11 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   postgres:
     image: postgres:15
@@ -20,11 +25,21 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7
     ports:
-      - "${REDIS_PORT}:${REDIS_PORT}"
+      - "${REDIS_PORT}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   minio:
     image: minio/minio:latest
@@ -45,13 +60,21 @@ services:
     ports:
       - "${SIMULATOR_PORT}:${SIMULATOR_PORT}"
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
     environment:
+      SERVER_PORT: ${SIMULATOR_PORT}
       SPRING_RABBITMQ_HOST: ${RABBITMQ_HOST}
       SPRING_RABBITMQ_PORT: ${RABBITMQ_PORT}
       SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER}
       SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
-      SERVER_PORT: ${SIMULATOR_PORT}
+      TELEMETRY_FREQUENCY_HZ: ${TELEMETRY_FREQUENCY_HZ}
+      LOCO_1_NUMBER: ${LOCO_1_NUMBER}
+      LOCO_1_TYPE: ${LOCO_1_TYPE}
+      LOCO_1_NAME: ${LOCO_1_NAME}
+      LOCO_2_NUMBER: ${LOCO_2_NUMBER}
+      LOCO_2_TYPE: ${LOCO_2_TYPE}
+      LOCO_2_NAME: ${LOCO_2_NAME}
 
   telemetry:
     build:
@@ -60,13 +83,25 @@ services:
     ports:
       - "${TELEMETRY_PORT}:${TELEMETRY_PORT}"
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
+      SERVER_PORT: ${TELEMETRY_PORT}
       SPRING_RABBITMQ_HOST: ${RABBITMQ_HOST}
       SPRING_RABBITMQ_PORT: ${RABBITMQ_PORT}
       SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER}
       SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
-      SERVER_PORT: ${TELEMETRY_PORT}
+      SPRING_DATA_REDIS_HOST: ${REDIS_HOST}
+      SPRING_DATA_REDIS_PORT: ${REDIS_PORT}
+      TELEMETRY_FREQUENCY_HZ: ${TELEMETRY_FREQUENCY_HZ}
+      LOCO_1_NUMBER: ${LOCO_1_NUMBER}
+      LOCO_1_TYPE: ${LOCO_1_TYPE}
+      LOCO_1_NAME: ${LOCO_1_NAME}
+      LOCO_2_NUMBER: ${LOCO_2_NUMBER}
+      LOCO_2_TYPE: ${LOCO_2_TYPE}
+      LOCO_2_NAME: ${LOCO_2_NAME}
 
   history:
     build:
@@ -75,9 +110,12 @@ services:
     ports:
       - "${HISTORY_PORT}:${HISTORY_PORT}"
     depends_on:
-      - postgres
-      - rabbitmq
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     environment:
+      SERVER_PORT: ${HISTORY_PORT}
       SPRING_DATASOURCE_URL: ${POSTGRES_URL}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
@@ -85,7 +123,13 @@ services:
       SPRING_RABBITMQ_PORT: ${RABBITMQ_PORT}
       SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER}
       SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
-      SERVER_PORT: ${HISTORY_PORT}
+      TELEMETRY_FREQUENCY_HZ: ${TELEMETRY_FREQUENCY_HZ}
+      LOCO_1_NUMBER: ${LOCO_1_NUMBER}
+      LOCO_1_TYPE: ${LOCO_1_TYPE}
+      LOCO_1_NAME: ${LOCO_1_NAME}
+      LOCO_2_NUMBER: ${LOCO_2_NUMBER}
+      LOCO_2_TYPE: ${LOCO_2_TYPE}
+      LOCO_2_NAME: ${LOCO_2_NAME}
 
   gateway:
     build:
@@ -94,24 +138,44 @@ services:
     ports:
       - "${GATEWAY_PORT}:${GATEWAY_PORT}"
     depends_on:
-      - simulator
-      - telemetry
-      - history
-      - redis
-      - postgres
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      simulator:
+        condition: service_started
+      telemetry:
+        condition: service_started
+      history:
+        condition: service_started
     environment:
       SERVER_PORT: ${GATEWAY_PORT}
+      SPRING_DATA_REDIS_HOST: ${REDIS_HOST}
+      SPRING_DATA_REDIS_PORT: ${REDIS_PORT}
+      SPRING_DATASOURCE_URL: ${POSTGRES_URL}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      R2DBC_URL: r2dbc:postgresql://postgres:5432/${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION: ${JWT_EXPIRATION}
       JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION}
+      SIMULATOR_HOST: simulator
       SIMULATOR_PORT: ${SIMULATOR_PORT}
+      TELEMETRY_HOST: telemetry
       TELEMETRY_PORT: ${TELEMETRY_PORT}
+      HISTORY_HOST: history
       HISTORY_PORT: ${HISTORY_PORT}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      MINIO_URL: http://minio:9000
+      MINIO_USER: ${MINIO_USER}
+      MINIO_PASSWORD: ${MINIO_PASSWORD}
+      MINIO_BUCKET: ${MINIO_BUCKET}
 
 volumes:
   postgres_data:

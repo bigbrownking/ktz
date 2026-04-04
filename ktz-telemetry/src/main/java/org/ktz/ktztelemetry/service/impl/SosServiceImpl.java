@@ -2,6 +2,7 @@ package org.ktz.ktztelemetry.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.ktz.ktztelemetry.config.WebSocketSinks;
 import org.ktz.ktztelemetry.dto.SosRequest;
 import org.ktz.ktztelemetry.dto.SosResponse;
 import org.ktz.ktztelemetry.service.SosService;
@@ -16,7 +17,7 @@ import java.time.Instant;
 @RequiredArgsConstructor
 public class SosServiceImpl implements SosService {
 
-    private final SimpMessagingTemplate messagingTemplate;
+    private final WebSocketSinks wsSinks;
 
     @Override
     public Mono<Void> sendSos(SosRequest request) {
@@ -32,8 +33,8 @@ public class SosServiceImpl implements SosService {
                     .timestamp(Instant.now().toString())
                     .build();
 
-            messagingTemplate.convertAndSend("/topic/sos", response);
-            messagingTemplate.convertAndSend("/topic/alert/all", response);
+            wsSinks.send("sos", response);
+            wsSinks.send("alert/all", response);
 
             log.warn("SOS from {} at [{}, {}]",
                     response.getLocomotiveNumber(),

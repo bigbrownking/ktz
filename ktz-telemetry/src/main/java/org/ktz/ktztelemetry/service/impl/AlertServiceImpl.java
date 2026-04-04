@@ -2,6 +2,7 @@ package org.ktz.ktztelemetry.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.ktz.ktztelemetry.config.WebSocketSinks;
 import org.ktz.ktztelemetry.dto.AlertRequest;
 import org.ktz.ktztelemetry.service.AlertService;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -11,25 +12,26 @@ import reactor.core.publisher.Mono;
 import java.time.Instant;
 import java.util.Map;
 
+// AlertServiceImpl.java
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AlertServiceImpl implements AlertService {
 
-    private final SimpMessagingTemplate messagingTemplate;
+    private final WebSocketSinks wsSinks;
 
     @Override
     public Mono<Void> sendAlert(AlertRequest request) {
         return Mono.fromRunnable(() -> {
-            String destination = "/topic/alert/" + request.getLocomotiveNumber();
             Map<String, Object> payload = Map.of(
-                    "message",         request.getMessage(),
-                    "type",            request.getType(),
+                    "message",          request.getMessage(),
+                    "type",             request.getType(),
                     "locomotiveNumber", request.getLocomotiveNumber(),
-                    "timestamp",       Instant.now().toString()
+                    "timestamp",        Instant.now().toString()
             );
-            messagingTemplate.convertAndSend(destination, payload);
-            log.info("Alert sent to {}: [{}] {}", destination, request.getType(), request.getMessage());
+            wsSinks.send("alert/" + request.getLocomotiveNumber(), payload);
+            log.info("Alert sent to {}: [{}] {}", request.getLocomotiveNumber(),
+                    request.getType(), request.getMessage());
         });
     }
 
@@ -41,7 +43,7 @@ public class AlertServiceImpl implements AlertService {
                     "type",      request.getType(),
                     "timestamp", Instant.now().toString()
             );
-            messagingTemplate.convertAndSend("/topic/alert/all", payload);
+            wsSinks.send("alert/all", payload);
             log.info("Alert broadcast: [{}] {}", request.getType(), request.getMessage());
         });
     }

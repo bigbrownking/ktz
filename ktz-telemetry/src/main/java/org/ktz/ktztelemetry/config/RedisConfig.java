@@ -1,5 +1,6 @@
 package org.ktz.ktztelemetry.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.ktz.ktztelemetry.model.TelemetryData;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,14 +15,17 @@ public class RedisConfig {
 
     @Bean
     public ReactiveRedisTemplate<String, TelemetryData> telemetryRedisTemplate(
-            ReactiveRedisConnectionFactory factory) {
+            ReactiveRedisConnectionFactory factory,
+            ObjectMapper objectMapper) {
 
         StringRedisSerializer keySerializer = new StringRedisSerializer();
+
         Jackson2JsonRedisSerializer<TelemetryData> valueSerializer =
-                new Jackson2JsonRedisSerializer<>(TelemetryData.class);
+                new Jackson2JsonRedisSerializer<>(objectMapper, TelemetryData.class);
 
         RedisSerializationContext<String, TelemetryData> context =
-                RedisSerializationContext.<String, TelemetryData>newSerializationContext(keySerializer)
+                RedisSerializationContext.<String, TelemetryData>
+                                newSerializationContext(keySerializer)
                         .value(valueSerializer)
                         .build();
 
