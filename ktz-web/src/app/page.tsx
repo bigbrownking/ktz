@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Settings2, Fuel, Disc, Zap, AlertTriangle, TrendingUp } from 'lucide-react';
-import { useTelemetry } from '@/shared/lib/telemetry-context';
-import { ExportPanel } from '@/widgets/export-panel';
+import { useTelemetry, setKtzLocoNumber } from '@/shared/lib/telemetry-context';
 import { HealthIndicatorDetailed } from '@/widgets/health-indicator-detailed';
 import { Speedometer } from '@/widgets/speedometer';
 import { DieselPanel } from '@/widgets/diesel-panel';
@@ -16,13 +16,13 @@ import { DiagnosticsLog } from '@/widgets/diagnostics-log';
 import { TrackSchematic } from '@/widgets/track-schematic';
 type PanelView = 'diesel' | 'fuel' | 'brakes' | 'electric' | 'alerts' | 'trends';
 
-const panels = [
-  { id: 'diesel' as PanelView, label: 'ДИЗЕЛЬ', icon: Settings2, color: 'cyan' },
-  { id: 'fuel' as PanelView, label: 'ТОПЛИВО', icon: Fuel, color: 'green' },
-  { id: 'brakes' as PanelView, label: 'ТОРМОЗА', icon: Disc, color: 'purple' },
-  { id: 'electric' as PanelView, label: 'ЭЛЕКТРИКА', icon: Zap, color: 'yellow' },
-  { id: 'alerts' as PanelView, label: 'АЛЕРТЫ', icon: AlertTriangle, color: 'red' },
-  { id: 'trends' as PanelView, label: 'ТРЕНДЫ', icon: TrendingUp, color: 'blue' },
+const PANEL_DEFS = [
+  { id: 'diesel' as PanelView, label: 'ДИЗЕЛЬ', icon: Settings2, color: 'cyan' as const },
+  { id: 'fuel' as PanelView, label: 'ТОПЛИВО', icon: Fuel, color: 'green' as const },
+  { id: 'brakes' as PanelView, label: 'ТОРМОЗА', icon: Disc, color: 'purple' as const },
+  { id: 'electric' as PanelView, label: 'ЭЛЕКТРИКА', icon: Zap, color: 'yellow' as const },
+  { id: 'alerts' as PanelView, label: 'АЛЕРТЫ', icon: AlertTriangle, color: 'red' as const },
+  { id: 'trends' as PanelView, label: 'ТРЕНДЫ', icon: TrendingUp, color: 'blue' as const },
 ];
 
 const colorMap = {
@@ -35,8 +35,33 @@ const colorMap = {
 };
 
 export default function CabinPage() {
+  const router = useRouter();
   const telemetry = useTelemetry();
   const [activePanel, setActivePanel] = useState<PanelView>('diesel');
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const loco = params.get('loco');
+    if (!loco) return;
+    setKtzLocoNumber(decodeURIComponent(loco));
+    router.replace('/', { scroll: false });
+  }, [router]);
+
+  const panels = useMemo(() => {
+    if (telemetry.locomotiveType === 'KZ8A') {
+      return PANEL_DEFS.filter(p => p.id !== 'diesel' && p.id !== 'fuel');
+    }
+    return PANEL_DEFS.filter(p => p.id !== 'electric');
+  }, [telemetry.locomotiveType]);
+
+  useEffect(() => {
+    const kz = telemetry.locomotiveType === 'KZ8A';
+    setActivePanel(prev => {
+      if (kz && (prev === 'diesel' || prev === 'fuel')) return 'electric';
+      if (!kz && prev === 'electric') return 'diesel';
+      return prev;
+    });
+  }, [telemetry.locomotiveType]);
 
   return (
     <>
@@ -60,7 +85,7 @@ export default function CabinPage() {
             <button
               key={panel.id}
               onClick={() => setActivePanel(panel.id)}
-              className={`flex-1 flex items-center justify-center gap-2 px-6 py-4 rounded-xl font-bold text-sm uppercase tracking-wider transition-all border-2 ${
+              className={`flex-1 min-w-0 flex items-center justify-center gap-2 px-4 py-4 rounded-xl font-bold text-sm uppercase tracking-wider transition-all border-2 ${
                 isActive ? classes.active : classes.idle
               }`}
             >
@@ -90,9 +115,8 @@ export default function CabinPage() {
         />
       </div>
 
-      <div className="mt-6 flex items-center justify-between">
-        <span className="text-sm text-slate-600">© 2026 KINETIC OBSERVER CORE v2.1</span>
-        <ExportPanel />
+      <div className="mt-6">
+        <span className="text-sm text-slate-600">© 2026 Мониторинг локомотивов КТЖ</span>
       </div>
     </>
   );

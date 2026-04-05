@@ -1,10 +1,13 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Activity, Cpu, AlertTriangle, Zap, MapPin, Star } from 'lucide-react';
 import { MapTrain } from '@/shared/lib/fleet-data';
 import { useAuth } from '@/shared/lib/auth-context';
+import { isAdmin } from '@/shared/lib/auth-store';
+import { useTelemetryContext } from '@/shared/lib/telemetry-context';
+import { mergeMapTrainWithTelemetry } from '@/shared/lib/live-train-merge';
 
 const FleetMap = dynamic(
   () => import('@/widgets/fleet-map').then(m => m.FleetMap),
@@ -35,6 +38,19 @@ function healthBg(cat: MapTrain['healthCategory']) {
 export default function MapPage() {
   const { session } = useAuth();
   const myLocoNumber = session?.locomotiveNumber ?? null;
+  const { telemetry, locomotiveNumber: telemetryLoco } = useTelemetryContext();
+
+  /** На карте «мой» поезд = тот же номер, что в JWT; ФИО берём из сессии, если маршрут в API без машиниста */
+  const sessionDriver = useMemo(() => {
+    if (!session || isAdmin(session) || !session.locomotiveNumber) return null;
+    return {
+      locomotiveNumber: session.locomotiveNumber,
+      firstName: session.name,
+      lastName: session.surname,
+      photoUrl: session.photoUrl,
+      age: session.age,
+    };
+  }, [session]);
 
   const [trains, setTrains] = useState<MapTrain[]>([]);
   const [focusLoco, setFocusLoco] = useState<string | null>(null);
@@ -79,14 +95,17 @@ export default function MapPage() {
         ))}
       </div>
 
-      <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-8">
-          <div className="bg-[#0f1629] border border-[#1e2a45] rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2a45]">
+      <div className="grid grid-cols-12 gap-6 items-start lg:items-stretch">
+        <div className="col-span-8 min-h-0 min-w-0">
+          <div className="bg-[#0f1629] border border-[#1e2a45] rounded-xl overflow-visible h-full flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2a45] rounded-t-xl overflow-hidden shrink-0">
               <h2 className="text-cyan-400 font-semibold text-sm uppercase tracking-wider">
                 Карта поездов — Казахстан
               </h2>
-              <div className="flex items-center gap-4 text-xs text-slate-500">
+              <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
+                <span className="text-slate-400 hidden sm:inline">
+                  Выберите поезд — на карте подсветится весь маршрут
+                </span>
                 {myLocoNumber && (
                   <span className="flex items-center gap-1.5 text-amber-400 font-semibold">
                     <Star className="w-3 h-3 fill-amber-400" />
@@ -107,16 +126,21 @@ export default function MapPage() {
             <FleetMap
               focusLoco={focusLoco}
               myLocoNumber={myLocoNumber}
+              sessionDriver={sessionDriver}
               onTrainsChange={handleTrainsChange}
+              onFocusLocoChange={setFocusLoco}
             />
           </div>
         </div>
 
-        <div className="col-span-4 space-y-3">
-          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider px-1">
-            {myLocoNumber ? 'Мой поезд и флот' : 'Активные локомотивы'}
-          </h3>
+        <div className="col-span-4 flex min-h-0 min-w-0 flex-col gap-3 overflow-hidden lg:max-h-[calc(640px+3.25rem)] lg:h-[calc(640px+3.25rem)]">
+          <div className="shrink-0 px-1">
+            <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+              {myLocoNumber ? 'Поезда' : 'Активные локомотивы'}
+            </h3>
+          </div>
 
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pr-1 [scrollbar-width:thin] flex flex-col gap-3">
           {trains.length === 0 && (
             <div className="bg-[#0f1629] border border-[#1e2a45] rounded-xl p-6 text-center">
               <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
@@ -124,7 +148,8 @@ export default function MapPage() {
             </div>
           )}
 
-          {sorted.map(train => {
+          {sorted.map(t => {
+            const train = mergeMapTrainWithTelemetry(t, telemetryLoco, telemetry);
             const isMyTrain = myLocoNumber && train.locomotiveNumber === myLocoNumber;
             return (
               <button
@@ -208,6 +233,7 @@ export default function MapPage() {
               </button>
             );
           })}
+          </div>
         </div>
       </div>
     </div>

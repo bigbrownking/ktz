@@ -4,6 +4,7 @@ export function connectWs(
   path: string,
   onMessage: (data: unknown) => void,
   onOpen?: () => void,
+  onClose?: () => void,
 ): () => void {
   if (typeof window === 'undefined') return () => {};
 
@@ -24,9 +25,11 @@ export function connectWs(
       ws.onerror = () => { /* handled in onclose */ };
 
       ws.onclose = () => {
+        onClose?.();
         if (!closed) reconnectTimer = setTimeout(connect, 3000);
       };
     } catch {
+      onClose?.();
       if (!closed) reconnectTimer = setTimeout(connect, 3000);
     }
   }

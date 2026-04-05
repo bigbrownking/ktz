@@ -27,6 +27,15 @@ interface TelemetryContextValue {
 
 const TelemetryContext = createContext<TelemetryContextValue | null>(null);
 
+export const KTZ_LOCO_CHANGE = 'ktz-loco-change';
+
+/** Записать номер локомотива для кабины/телеметрии и переподписаться на WS (диспетчер, ссылки с ?loco=). */
+export function setKtzLocoNumber(number: string) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('ktz_loco_number', number);
+  window.dispatchEvent(new CustomEvent(KTZ_LOCO_CHANGE));
+}
+
 const FUEL_MAX_LITERS = 5000;
 const WATER_MAX_LITERS = 5000;
 const BUFFER_MS = 15 * 60 * 1000;
@@ -52,7 +61,7 @@ function mapToFrontend(raw: BackendTelemetry, health: BackendHealth | null): Tel
   const alerts = (health?.recommendations ?? [])
     .filter(r => r.startsWith('🔴') || r.startsWith('🟡'))
     .map((r, i) => ({
-      id: String(i),
+      id: `ws-${i}-${r.length}-${r.slice(0, 32)}`,
       level: (r.startsWith('🔴') ? 'critical' : 'warning') as 'critical' | 'warning' | 'info',
       title: r.replace(/^[🔴🟡]\s*(СРОЧНО|Внимание):\s*/u, '').split(':')[0].slice(0, 60),
       message: r,
@@ -72,6 +81,7 @@ function mapToFrontend(raw: BackendTelemetry, health: BackendHealth | null): Tel
   const nextStation = nameParts[1]?.trim() ?? 'Кокшетау';
 
   return {
+    locomotiveType: raw.type,
     health: score,
     healthFactors: healthFactors.length > 0 ? healthFactors : [],
     healthCategory: categoryLabel,
@@ -125,8 +135,16 @@ export function TelemetryProvider({ children }: { children: ReactNode }) {
   const [telemetry, setTelemetry] = useState<TelemetryData>(STABLE_TELEMETRY);
   const [connected, setConnected] = useState(false);
   const [buffer, setBuffer] = useState<TelemetrySnapshot[]>([]);
+  const [, setLocoRevision] = useState(0);
   const healthRef = useRef<BackendHealth | null>(null);
+  const lastRawRef = useRef<BackendTelemetry | null>(null);
   const connectedRef = useRef(false);
+
+  useEffect(() => {
+    const onLocoChange = () => setLocoRevision(n => n + 1);
+    window.addEventListener(KTZ_LOCO_CHANGE, onLocoChange);
+    return () => window.removeEventListener(KTZ_LOCO_CHANGE, onLocoChange);
+  }, []);
 
   const locoNumber =
     typeof window !== 'undefined'
@@ -162,7 +180,7 @@ export function TelemetryProvider({ children }: { children: ReactNode }) {
           return updated;
         });
       }
-    }, 2000);
+    }, 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -170,15 +188,18 @@ export function TelemetryProvider({ children }: { children: ReactNode }) {
     const closeTelemetry = connectWs(
       `/ws/telemetry/${locoNumber}`,
       (data) => {
+        const raw = data as BackendTelemetry;
+        lastRawRef.current = raw;
         connectedRef.current = true;
         setConnected(true);
-        const mapped = mapToFrontend(data as BackendTelemetry, healthRef.current);
+        const mapped = mapToFrontend(raw, healthRef.current);
         pushSnapshot(mapped);
         setTelemetry(mapped);
       },
+      undefined,
       () => {
-        connectedRef.current = true;
-        setConnected(true);
+        connectedRef.current = false;
+        setConnected(false);
       },
     );
 
@@ -186,10 +207,17 @@ export function TelemetryProvider({ children }: { children: ReactNode }) {
       `/ws/health/${locoNumber}`,
       (data) => {
         healthRef.current = data as BackendHealth;
+        if (lastRawRef.current) {
+          setTelemetry(mapToFrontend(lastRawRef.current, healthRef.current));
+        }
+      },
+      undefined,
+      () => {
       },
     );
 
     return () => {
+      lastRawRef.current = null;
       closeTelemetry();
       closeHealth();
       connectedRef.current = false;

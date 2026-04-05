@@ -1,15 +1,48 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { MapTrain, KNOWN_LOCOS } from '@/shared/lib/fleet-data';
+import { useEffect, useRef, useState, useCallback, memo, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import { MapTrain, defaultFuelLevelForLoco } from '@/shared/lib/fleet-data';
 import { routesApi, ApiRoute } from '@/shared/lib/api-client';
 import { connectWs } from '@/shared/lib/ws-client';
 import { BackendMapPoint, BackendHealth } from '@/shared/lib/backend-types';
+import { useTelemetryContext } from '@/shared/lib/telemetry-context';
+import { mergeMapTrainWithTelemetry } from '@/shared/lib/live-train-merge';
+
+function mergeHealthPayload(
+  health: BackendHealth | undefined,
+  prev: MapTrain | undefined,
+): Pick<MapTrain, 'healthFactors' | 'healthRecommendations'> {
+  if (!health) {
+    return {
+      healthFactors: prev?.healthFactors,
+      healthRecommendations: prev?.healthRecommendations,
+    };
+  }
+  const factors =
+    health.allFactors?.length ? health.allFactors : (health.topFactors ?? []);
+  return {
+    healthFactors: factors,
+    healthRecommendations: health.recommendations ?? [],
+  };
+}
+
+/** Данные залогиненного машиниста для своего локомотива (когда API маршрута не заполнил ФИО) */
+export interface SessionDriverInfo {
+  locomotiveNumber: string;
+  firstName: string;
+  lastName: string;
+  photoUrl: string | null;
+  age: number;
+}
 
 interface Props {
   focusLoco?: string | null;
   myLocoNumber?: string | null;
+  /** Профиль текущего пользователя — подставляется на поезде с тем же номером локомотива */
+  sessionDriver?: SessionDriverInfo | null;
   onTrainsChange?: (trains: MapTrain[]) => void;
+  onFocusLocoChange?: (loco: string | null) => void;
 }
 
 function healthColor(cat: MapTrain['healthCategory']): string {
@@ -18,16 +51,84 @@ function healthColor(cat: MapTrain['healthCategory']): string {
   return '#ef4444';
 }
 
+const FUEL_TANK_LITERS_MAX = 5000;
+
+function fuelBarColor(pct: number): string {
+  if (pct < 20) return '#ef4444';
+  if (pct < 40) return '#f59e0b';
+  return '#22c55e';
+}
+
+function fuelPercentForTooltip(train: MapTrain): number | null {
+  if (train.type === 'KZ8A') return null;
+  const f = train.fuelLevel;
+  if (f > 100) return Math.min(100, (f / FUEL_TANK_LITERS_MAX) * 100);
+  return Math.min(100, Math.max(0, f));
+}
+
 function locoType(num: string): 'TE33A' | 'KZ8A' {
   return num.startsWith('KZ') ? 'KZ8A' : 'TE33A';
+}
+
+function driverNameLine(d: MapTrain['driver']): string | null {
+  const fn = (d.firstName ?? '').trim();
+  const ln = (d.lastName ?? '').trim();
+  if (!fn || fn === '—') return null;
+  const full = `${fn} ${ln}`.trim();
+  return full.length > 0 ? full : null;
+}
+
+function hasDriverPhotoUrl(url: string | undefined): boolean {
+  const u = (url ?? '').trim();
+  return u.length > 0 && u !== '/drivers/placeholder.jpg';
+}
+
+function locoBadgeLetters(loco: string): string {
+  const alnum = loco.replace(/[^a-zA-Z0-9]/g, '');
+  if (alnum.length >= 2) return alnum.slice(-2).toUpperCase();
+  return loco.slice(0, 2).toUpperCase() || '?';
+}
+
+function mergeDriverFromSession(
+  loco: string,
+  driver: MapTrain['driver'],
+  session: SessionDriverInfo | null | undefined,
+): MapTrain['driver'] {
+  if (!session || session.locomotiveNumber !== loco) return driver;
+  const fn = (session.firstName ?? '').trim();
+  const ln = (session.lastName ?? '').trim();
+  if (!fn && !ln) return driver;
+  const photo = (session.photoUrl?.trim() || driver.photoUrl?.trim() || '') || '';
+  return {
+    firstName: fn || driver.firstName,
+    lastName: ln || driver.lastName,
+    age: session.age > 0 ? session.age : driver.age,
+    photoUrl: photo,
+  };
 }
 
 const TILE_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
 const TILE_ATTR = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>';
 
-interface TooltipState { train: MapTrain; x: number; y: number }
+/** Точки линии маршрута по данным API (станции → равномерно вдоль прямой start–end) */
+function buildRouteLatLngs(route: ApiRoute): [number, number][] {
+  const sl = route.startLat;
+  const slo = route.startLon;
+  const el = route.endLat;
+  const elo = route.endLon;
+  if (sl == null || slo == null || el == null || elo == null) return [];
+  const names = route.stations?.split(',').map(x => x.trim()).filter(Boolean) ?? [];
+  const n = Math.max(2, names.length >= 2 ? names.length : 2);
+  const pts: [number, number][] = [];
+  for (let i = 0; i < n; i++) {
+    const t = n === 1 ? 0 : i / (n - 1);
+    pts.push([sl + (el - sl) * t, slo + (elo - slo) * t]);
+  }
+  return pts;
+}
 
-export function FleetMap({ focusLoco, myLocoNumber, onTrainsChange }: Props) {
+export function FleetMap({ focusLoco, myLocoNumber, sessionDriver, onTrainsChange, onFocusLocoChange }: Props) {
+  const { telemetry, locomotiveNumber: telemetryLoco } = useTelemetryContext();
   const mapRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const L = useRef<any>(null);
@@ -37,28 +138,78 @@ export function FleetMap({ focusLoco, myLocoNumber, onTrainsChange }: Props) {
   const markers = useRef<Record<string, any>>({});
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const routeLines = useRef<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const routePolylinesByLoco = useRef<Record<string, any>>({});
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const routeStationGroupsByLoco = useRef<Record<string, any>>({});
+  const onFocusLocoChangeRef = useRef(onFocusLocoChange);
+  useEffect(() => { onFocusLocoChangeRef.current = onFocusLocoChange; }, [onFocusLocoChange]);
   const trainData = useRef<Record<string, MapTrain>>({});
   const healthData = useRef<Record<string, BackendHealth>>({});
   const apiRoutes = useRef<ApiRoute[]>([]);
   const [trains, setTrains] = useState<MapTrain[]>([]);
-  const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+  const [tooltipTrain, setTooltipTrain] = useState<MapTrain | null>(null);
+  const hoveredLocoRef = useRef<string | null>(null);
+  const tooltipWrapRef = useRef<HTMLDivElement | null>(null);
+  const hoveringPanelRef = useRef(false);
+  const hideTooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
+  const focusLocoRef = useRef(focusLoco);
+  useEffect(() => { focusLocoRef.current = focusLoco; }, [focusLoco]);
 
   const notifyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const notifyParent = useCallback((updated: Record<string, MapTrain>) => {
-    if (notifyTimer.current) return;
+  /** Дебаунс списка поездов: всегда сбрасываем таймер и при срабатывании читаем актуальный trainData (раньше отбрасывались все вызовы, пока ждали 2с — из-за этого здоровье с /ws/health не доходило до сайдбара) */
+  const notifyParent = useCallback(() => {
+    if (notifyTimer.current) clearTimeout(notifyTimer.current);
     notifyTimer.current = setTimeout(() => {
       notifyTimer.current = null;
-      const list = Object.values(updated);
+      const list = Object.values(trainData.current);
       setTrains(list);
       onTrainsChange?.(list);
-    }, 2000);
+    }, 120);
   }, [onTrainsChange]);
 
   const markerColors = useRef<Record<string, string>>({});
   const myLocoRef = useRef<string | null | undefined>(myLocoNumber);
   useEffect(() => { myLocoRef.current = myLocoNumber; }, [myLocoNumber]);
+
+  const sessionDriverRef = useRef<SessionDriverInfo | null | undefined>(sessionDriver);
+  useEffect(() => {
+    sessionDriverRef.current = sessionDriver ?? null;
+  }, [sessionDriver]);
+
+  /** fixed + viewport: не обрезается родителем с overflow-hidden и не «уезжает» под карту Leaflet */
+  const positionTooltip = useCallback((e: { originalEvent: MouseEvent }) => {
+    const wrap = tooltipWrapRef.current;
+    if (!wrap) return;
+    const cx = e.originalEvent.clientX;
+    const cy = e.originalEvent.clientY;
+    wrap.style.position = 'fixed';
+    wrap.style.left = `${cx + 16}px`;
+    wrap.style.top = `${cy - 20}px`;
+    wrap.style.transform = cx > window.innerWidth * 0.55 ? 'translateX(-110%)' : '';
+    wrap.style.zIndex = '2147483000';
+  }, []);
+
+  const clearHideTooltipTimer = useCallback(() => {
+    if (hideTooltipTimerRef.current) {
+      clearTimeout(hideTooltipTimerRef.current);
+      hideTooltipTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleHideTooltip = useCallback(() => {
+    clearHideTooltipTimer();
+    hideTooltipTimerRef.current = setTimeout(() => {
+      hideTooltipTimerRef.current = null;
+      if (!hoveringPanelRef.current) {
+        hoveredLocoRef.current = null;
+        setTooltipTrain(null);
+      }
+    }, 280);
+  }, [clearHideTooltipTimer]);
 
   const upsertMarker = useCallback((train: MapTrain) => {
     if (!L.current || !mapInst.current) return;
@@ -79,25 +230,67 @@ export function FleetMap({ focusLoco, myLocoNumber, onTrainsChange }: Props) {
       });
       marker.addTo(mapInst.current);
       marker.on('mouseover', (e: { originalEvent: MouseEvent }) => {
-        const rect = mapRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        setTooltip({ train, x: e.originalEvent.clientX - rect.left, y: e.originalEvent.clientY - rect.top });
+        clearHideTooltipTimer();
+        hoveredLocoRef.current = train.locomotiveNumber;
+        setTooltipTrain(train);
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => positionTooltip(e));
+        });
       });
       marker.on('mousemove', (e: { originalEvent: MouseEvent }) => {
-        const rect = mapRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        setTooltip(prev => prev ? { ...prev, x: e.originalEvent.clientX - rect.left, y: e.originalEvent.clientY - rect.top } : null);
+        if (hoveredLocoRef.current !== train.locomotiveNumber) return;
+        positionTooltip(e);
       });
-      marker.on('mouseout', () => setTooltip(null));
+      marker.on('mouseout', () => {
+        if (hoveredLocoRef.current === train.locomotiveNumber) {
+          scheduleHideTooltip();
+        }
+      });
+      marker.on('click', (e: { originalEvent?: MouseEvent }) => {
+        e.originalEvent?.stopPropagation();
+        onFocusLocoChangeRef.current?.(train.locomotiveNumber);
+      });
       markers.current[train.locomotiveNumber] = marker;
       markerColors.current[train.locomotiveNumber] = color;
     }
-    setTooltip(prev => prev?.train.locomotiveNumber === train.locomotiveNumber ? { ...prev, train } : prev);
+    if (hoveredLocoRef.current === train.locomotiveNumber) {
+      setTooltipTrain(train);
+    }
+  }, [positionTooltip, clearHideTooltipTimer, scheduleHideTooltip]);
+
+  const applyRouteHighlight = useCallback((loc: string | null) => {
+    if (!L.current) return;
+    const focus = loc ?? null;
+    Object.entries(routePolylinesByLoco.current).forEach(([loco, line]) => {
+      const selected = focus === loco;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (line as any).setStyle({
+        color: selected ? '#f59e0b' : '#06b6d4',
+        weight: selected ? 7 : 2,
+        opacity: focus ? (selected ? 0.98 : 0.1) : 0.32,
+        dashArray: selected ? undefined : '8 6',
+      });
+      if (selected) (line as { bringToFront?: () => void }).bringToFront?.();
+    });
+    Object.entries(routeStationGroupsByLoco.current).forEach(([loco, group]) => {
+      const selected = focus === loco;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (group as any).eachLayer((layer: { setStyle?: (s: object) => void }) => {
+        layer.setStyle?.({
+          opacity: selected ? 1 : 0.2,
+          fillOpacity: selected ? 0.95 : 0.1,
+          color: selected ? '#f59e0b' : '#06b6d4',
+          weight: selected ? 3 : 1,
+          fillColor: '#0f172a',
+        });
+      });
+    });
   }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined' || mapInst.current) return;
     let mounted = true;
+    const animTimers: ReturnType<typeof setInterval>[] = [];
 
     if (!document.getElementById('leaflet-css')) {
       const link = document.createElement('link');
@@ -134,56 +327,86 @@ export function FleetMap({ focusLoco, myLocoNumber, onTrainsChange }: Props) {
           maxZoom: 19,
         }).addTo(map);
 
+        routePolylinesByLoco.current = {};
+        routeStationGroupsByLoco.current = {};
+
         routes.forEach(route => {
-          if (!route.startLat || !route.startLon || !route.endLat || !route.endLon) return;
-          const line = leaflet.polyline(
-            [[route.startLat, route.startLon], [route.endLat, route.endLon]],
-            { color: '#06b6d4', weight: 3, opacity: 0.5, dashArray: '8 6' },
-          ).addTo(map);
+          const loco = route.locomotiveNumber;
+          if (!loco || !route.startLat || !route.startLon || !route.endLat || !route.endLon) return;
+          const latlngs = buildRouteLatLngs(route);
+          if (latlngs.length < 2) return;
+
+          const line = leaflet.polyline(latlngs, {
+            color: '#06b6d4',
+            weight: 2,
+            opacity: 0.3,
+            dashArray: '8 6',
+            lineJoin: 'round',
+            lineCap: 'round',
+          }).addTo(map);
+          routePolylinesByLoco.current[loco] = line;
           routeLines.current.push(line);
 
-          leaflet.circleMarker([route.startLat, route.startLon], { radius: 6, color: '#06b6d4', fillColor: '#0a0e1a', fillOpacity: 1, weight: 2 })
-            .bindTooltip(route.origin, { permanent: false, direction: 'top', className: 'ktz-tooltip' })
-            .addTo(map);
-          leaflet.circleMarker([route.endLat, route.endLon], { radius: 6, color: '#06b6d4', fillColor: '#0a0e1a', fillOpacity: 1, weight: 2 })
-            .bindTooltip(route.destination, { permanent: false, direction: 'top', className: 'ktz-tooltip' })
-            .addTo(map);
+          const names = route.stations?.split(',').map(x => x.trim()).filter(Boolean) ?? [];
+          const stationGroup = leaflet.layerGroup();
+          latlngs.forEach((ll, i) => {
+            const isEnd = i === 0 || i === latlngs.length - 1;
+            const label = names[i] ?? (i === 0 ? route.origin : i === latlngs.length - 1 ? route.destination : `Пункт ${i + 1}`);
+            const m = leaflet.circleMarker(ll, {
+              radius: isEnd ? 6 : 4,
+              color: '#06b6d4',
+              weight: 2,
+              fillColor: '#0f172a',
+              fillOpacity: 0.35,
+              opacity: 0.35,
+            });
+            m.bindTooltip(label, { permanent: false, direction: 'top', className: 'ktz-tooltip' });
+            stationGroup.addLayer(m);
+          });
+          stationGroup.addTo(map);
+          routeStationGroupsByLoco.current[loco] = stationGroup;
+        });
+
+        map.on('click', () => {
+          onFocusLocoChangeRef.current?.(null);
         });
 
         mapInst.current = map;
+        if (mounted) setMapReady(true);
 
         const staticTrains: MapTrain[] = routes
           .filter(r => r.locomotiveNumber && r.startLat && r.startLon)
           .map(r => {
             const midLat = ((r.startLat ?? 0) + (r.endLat ?? 0)) / 2;
             const midLon = ((r.startLon ?? 0) + (r.endLon ?? 0)) / 2;
+            const loco = r.locomotiveNumber ?? '';
             return {
-              locomotiveNumber: r.locomotiveNumber ?? '',
+              locomotiveNumber: loco,
               locomotiveName: r.locomotiveName ?? '',
               type: (r.locomotiveNumber ?? '').startsWith('KZ') ? 'KZ8A' : 'TE33A',
               latitude: midLat,
               longitude: midLon,
               speed: 70 + Math.floor(Math.random() * 50),
+              fuelLevel: defaultFuelLevelForLoco(loco),
               health: 75,
               healthCategory: 'Норма' as const,
               routeFrom: r.origin,
               routeTo: r.destination,
-              driver: {
+              driver: mergeDriverFromSession(loco, {
                 firstName: r.driverName ?? '—',
                 lastName: r.driverSurname ?? '',
                 age: r.driverAge ?? 0,
                 photoUrl: r.driverPhotoUrl ?? '',
-              },
+              }, sessionDriverRef.current ?? undefined),
               route: r,
             };
           });
 
         staticTrains.forEach(t => { trainData.current[t.locomotiveNumber] = t; });
-        notifyParent({ ...trainData.current });
+        notifyParent();
         setTimeout(() => staticTrains.forEach(t => upsertMarker(t)), 150);
 
         // Animate static trains along their routes (client-side simulation)
-        const animTimers: ReturnType<typeof setInterval>[] = [];
         routes.forEach(route => {
           if (!route.locomotiveNumber || !route.startLat || !route.startLon || !route.endLat || !route.endLon) return;
           const totalMs = (route.estimatedMinutes ?? 240) * 60 * 1000;
@@ -203,12 +426,17 @@ export function FleetMap({ focusLoco, myLocoNumber, onTrainsChange }: Props) {
           }, 4000);
           animTimers.push(timer);
         });
-
-        return () => { mounted = false; animTimers.forEach(t => clearInterval(t)); };
       });
 
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+      animTimers.forEach(t => clearInterval(t));
+    };
   }, [notifyParent, upsertMarker]);
+
+  useEffect(() => () => {
+    if (hideTooltipTimerRef.current) clearTimeout(hideTooltipTimerRef.current);
+  }, []);
 
   useEffect(() => {
     const closeMap = connectWs('/ws/map/all', (raw) => {
@@ -219,6 +447,15 @@ export function FleetMap({ focusLoco, myLocoNumber, onTrainsChange }: Props) {
       const health = healthData.current[point.locomotiveNumber];
       const prev = trainData.current[point.locomotiveNumber];
 
+      const rawFuel =
+        typeof point.fuelLevel === 'number' && !Number.isNaN(point.fuelLevel)
+          ? point.fuelLevel
+          : undefined;
+      const fuel =
+        rawFuel !== undefined
+          ? rawFuel
+          : (prev?.fuelLevel ?? defaultFuelLevelForLoco(point.locomotiveNumber));
+
       const train: MapTrain = {
         locomotiveNumber: point.locomotiveNumber,
         locomotiveName: point.locomotiveName,
@@ -226,25 +463,46 @@ export function FleetMap({ focusLoco, myLocoNumber, onTrainsChange }: Props) {
         latitude: point.latitude,
         longitude: point.longitude,
         speed: point.speed,
+        fuelLevel: fuel,
         health: health?.score ?? (prev?.health ?? 75),
         healthCategory: (health?.categoryLabel ?? (prev?.healthCategory ?? 'Норма')) as MapTrain['healthCategory'],
         routeFrom: apiRoute?.origin ?? prev?.routeFrom ?? '',
         routeTo: apiRoute?.destination ?? prev?.routeTo ?? '',
-        driver: {
-          firstName: apiRoute?.driverName ?? prev?.driver?.firstName ?? '—',
-          lastName: apiRoute?.driverSurname ?? prev?.driver?.lastName ?? '',
-          age: apiRoute?.driverAge ?? prev?.driver?.age ?? 0,
-          photoUrl: apiRoute?.driverPhotoUrl ?? prev?.driver?.photoUrl ?? '',
-        },
+        driver: mergeDriverFromSession(
+          point.locomotiveNumber,
+          {
+            firstName: apiRoute?.driverName ?? prev?.driver?.firstName ?? '—',
+            lastName: apiRoute?.driverSurname ?? prev?.driver?.lastName ?? '',
+            age: apiRoute?.driverAge ?? prev?.driver?.age ?? 0,
+            photoUrl: apiRoute?.driverPhotoUrl ?? prev?.driver?.photoUrl ?? '',
+          },
+          sessionDriverRef.current ?? undefined,
+        ),
         route: apiRoute ?? prev?.route,
+        ...mergeHealthPayload(health, prev),
       };
 
       trainData.current[point.locomotiveNumber] = train;
-      notifyParent({ ...trainData.current });
+      notifyParent();
       upsertMarker(train);
     });
 
-    const closeHealthFns = KNOWN_LOCOS.map(loco =>
+    return () => {
+      closeMap();
+    };
+  }, [notifyParent, upsertMarker]);
+
+  /** Подписка на здоровье для каждого локомотива из маршрутов (не только TE33A-001/KZ8A-007), иначе тултип показывает заглушку 75% вместо кабины */
+  useEffect(() => {
+    if (!mapReady) return;
+    const locos = [
+      ...new Set(
+        (apiRoutes.current ?? []).map(r => r.locomotiveNumber).filter((x): x is string => Boolean(x)),
+      ),
+    ];
+    if (locos.length === 0) return;
+
+    const closeHealthFns = locos.map(loco =>
       connectWs(`/ws/health/${loco}`, (raw) => {
         const health = raw as BackendHealth;
         healthData.current[loco] = health;
@@ -255,27 +513,49 @@ export function FleetMap({ focusLoco, myLocoNumber, onTrainsChange }: Props) {
             ...prev,
             health: health.score,
             healthCategory: health.categoryLabel as MapTrain['healthCategory'],
+            ...mergeHealthPayload(health, prev),
           };
           trainData.current[loco] = updated;
-          notifyParent({ ...trainData.current });
+          notifyParent();
           upsertMarker(updated);
         }
       }),
     );
 
     return () => {
-      closeMap();
       closeHealthFns.forEach(fn => fn());
     };
-  }, [notifyParent, upsertMarker]);
+  }, [mapReady, notifyParent, upsertMarker]);
 
   useEffect(() => {
-    if (!focusLoco || !mapInst.current) return;
-    const train = trainData.current[focusLoco];
-    if (train) {
-      mapInst.current.flyTo([train.latitude, train.longitude], 9, { duration: 1.2 });
-    }
-  }, [focusLoco]);
+    if (!mapReady) return;
+    applyRouteHighlight(focusLoco ?? null);
+  }, [focusLoco, mapReady, applyRouteHighlight]);
+
+  useEffect(() => {
+    if (!mapReady || !sessionDriver) return;
+    const loco = sessionDriver.locomotiveNumber;
+    const t = trainData.current[loco];
+    if (!t) return;
+    const merged = mergeDriverFromSession(loco, t.driver, sessionDriver);
+    trainData.current[loco] = { ...t, driver: merged };
+    notifyParent();
+    upsertMarker(trainData.current[loco]);
+  }, [mapReady, sessionDriver, notifyParent, upsertMarker]);
+
+  /** Подтянуть тултип к актуальному trainData после обновления списка */
+  useEffect(() => {
+    const loco = hoveredLocoRef.current;
+    if (!loco) return;
+    const t = trainData.current[loco];
+    if (t) setTooltipTrain(t);
+  }, [trains]);
+
+  /** Для «своего» локомотива — те же цифры, что в кабине (TelemetryContext), пока карта не обогнала WS */
+  const tooltipDisplayTrain = useMemo(() => {
+    if (!tooltipTrain) return null;
+    return mergeMapTrainWithTelemetry(tooltipTrain, telemetryLoco, telemetry);
+  }, [tooltipTrain, telemetryLoco, telemetry]);
 
   return (
     <div className="relative w-full" style={{ height: '640px' }}>
@@ -305,18 +585,35 @@ export function FleetMap({ focusLoco, myLocoNumber, onTrainsChange }: Props) {
         <span className="text-slate-500 ml-1">{trains.length} лок.</span>
       </div>
 
-      {tooltip && (
-        <div
-          className="absolute z-[600] pointer-events-none"
-          style={{
-            left: tooltip.x + 16,
-            top: tooltip.y - 20,
-            transform: tooltip.x > 500 ? 'translateX(-110%)' : undefined,
-          }}
-        >
-          <TrainTooltip train={tooltip.train} />
-        </div>
-      )}
+      {tooltipDisplayTrain &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            ref={tooltipWrapRef}
+            className="will-change-transform pointer-events-auto"
+            style={{
+              position: 'fixed',
+              left: 0,
+              top: 0,
+              zIndex: 2147483000,
+              backgroundColor: '#111111',
+              borderRadius: '1rem',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.92)',
+            }}
+            onMouseEnter={() => {
+              clearHideTooltipTimer();
+              hoveringPanelRef.current = true;
+            }}
+            onMouseLeave={() => {
+              hoveringPanelRef.current = false;
+              hoveredLocoRef.current = null;
+              setTooltipTrain(null);
+            }}
+          >
+            <MemoTrainTooltip train={tooltipDisplayTrain} />
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -345,88 +642,107 @@ function buildIcon(L: any, train: MapTrain, color: string, isMine = false) {
   });
 }
 
-function TrainTooltip({ train }: { train: MapTrain }) {
+const MemoTrainTooltip = memo(function TrainTooltip({ train }: { train: MapTrain }) {
   const color = healthColor(train.healthCategory);
-  const r = train.route;
-  const stations = r?.stations ? r.stations.split(',').map(s => s.trim()) : null;
-  const etaMin = r?.estimatedMinutes ?? null;
-  const etaStr = etaMin ? `${Math.floor(etaMin / 60)}ч ${etaMin % 60}м` : null;
+  const healthPct = Math.min(100, Math.max(0, train.health));
+  const fuelPct = fuelPercentForTooltip(train);
+
+  const driverLine = driverNameLine(train.driver);
+  const showPhoto = hasDriverPhotoUrl(train.driver.photoUrl);
 
   return (
-    <div className="bg-[#0a0e1a]/97 border border-[#1e2a45] rounded-2xl shadow-2xl w-80 backdrop-blur-md overflow-hidden">
-      <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-800/60">
+    <div
+      className="w-80 overflow-hidden rounded-2xl border border-[#333]"
+      style={{ backgroundColor: '#111111', isolation: 'isolate' }}
+    >
+      <div className="flex items-center gap-3 border-b border-[#2a2a2a] bg-[#1a1a1a] px-4 py-4">
         <div className="relative flex-shrink-0">
-          <img
-            src={train.driver.photoUrl || `https://i.pravatar.cc/150?u=${train.locomotiveNumber}`}
-            alt={train.driver.firstName}
-            className="w-14 h-14 rounded-full object-cover border-2"
-            style={{ borderColor: color }}
-          />
-          <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-[#0a0e1a]" style={{ background: color }} />
+          {showPhoto ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={train.driver.photoUrl}
+              alt=""
+              className="w-14 h-14 rounded-full object-cover border-2 bg-[#2a2a2a]"
+              style={{ borderColor: color }}
+              decoding="async"
+              draggable={false}
+            />
+          ) : (
+            <div
+              className="w-14 h-14 rounded-full border-2 flex items-center justify-center text-xs font-bold text-slate-200 bg-[#2a2a2a]"
+              style={{ borderColor: color }}
+            >
+              {driverLine
+                ? driverLine
+                    .split(/\s+/)
+                    .map(s => s[0])
+                    .join('')
+                    .slice(0, 2)
+                    .toUpperCase()
+                : locoBadgeLetters(train.locomotiveNumber)}
+            </div>
+          )}
+          <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-[#1a1a1a]" style={{ background: color }} />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-bold text-white text-sm truncate">
-            {train.driver.firstName} {train.driver.lastName}
-          </div>
-          <div className="text-slate-400 text-xs">Машинист{train.driver.age > 0 ? ` · ${train.driver.age} лет` : ''}</div>
+          {driverLine ? (
+            <>
+              <div className="font-bold text-white text-sm truncate">{driverLine}</div>
+              <div className="text-slate-400 text-xs">
+                Машинист{train.driver.age > 0 ? ` · ${train.driver.age} лет` : ''}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="font-bold text-slate-400 text-sm">Машинист не назначен</div>
+              <div className="text-slate-500 text-xs">Нет данных о назначении в системе</div>
+            </>
+          )}
           <div className="text-cyan-400 text-xs font-mono mt-0.5">{train.locomotiveNumber} · {train.type}</div>
         </div>
       </div>
 
-      <div className="px-4 py-3 space-y-3">
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-slate-400 text-xs uppercase tracking-wider">Здоровье</span>
-            <span className="font-bold text-xs" style={{ color }}>{Math.round(train.health)}% — {train.healthCategory}</span>
+      <div className="space-y-3 bg-[#111111] px-4 py-3" style={{ backgroundColor: '#111111' }}>
+        <div className="rounded-xl bg-[#1a1a1a] p-3" style={{ backgroundColor: '#1a1a1a' }}>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">Здоровье</span>
+            <span className="shrink-0 text-sm font-bold tabular-nums" style={{ color }}>
+              {Math.round(healthPct)}% — {train.healthCategory}
+            </span>
           </div>
-          <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-            <div className="h-full rounded-full" style={{ width: `${train.health}%`, background: color }} />
+          <div className="h-2 overflow-hidden rounded-full bg-[#0a0a0a]">
+            <div className="h-full rounded-full" style={{ width: `${healthPct}%`, background: color }} />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <div className="bg-slate-900/60 rounded-xl p-2.5">
-            <div className="text-slate-500 text-[10px] uppercase tracking-wider mb-0.5">Скорость</div>
-            <div className="font-bold text-white text-sm" style={{ color }}>{Math.round(train.speed)} км/ч</div>
+          <div className="rounded-xl bg-[#1a1a1a] p-2.5" style={{ backgroundColor: '#1a1a1a' }}>
+            <div className="mb-0.5 text-[10px] uppercase tracking-wider text-slate-400">Скорость</div>
+            <div className="text-sm font-bold text-white" style={{ color }}>{Math.round(train.speed)} км/ч</div>
           </div>
-          {etaStr && (
-            <div className="bg-slate-900/60 rounded-xl p-2.5">
-              <div className="text-slate-500 text-[10px] uppercase tracking-wider mb-0.5">Время в пути</div>
-              <div className="font-bold text-white text-sm">{etaStr}</div>
+          <div className="rounded-xl bg-[#1a1a1a] p-2.5" style={{ backgroundColor: '#1a1a1a' }}>
+            <div className="mb-0.5 text-[10px] uppercase tracking-wider text-slate-400">
+              {train.type === 'KZ8A' ? 'Энергия' : 'Топливо'}
             </div>
-          )}
-          {r?.distanceKm && (
-            <div className="bg-slate-900/60 rounded-xl p-2.5">
-              <div className="text-slate-500 text-[10px] uppercase tracking-wider mb-0.5">Расстояние</div>
-              <div className="font-bold text-white text-sm">{r.distanceKm} км</div>
-            </div>
-          )}
+            {fuelPct == null ? (
+              <div className="text-sm font-bold text-slate-300">Электротяга</div>
+            ) : (
+              <>
+                <div className="text-sm font-bold text-white" style={{ color: fuelBarColor(fuelPct) }}>
+                  {Math.round(fuelPct)}%
+                </div>
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[#0a0a0a]">
+                  <div
+                    className="h-full rounded-full"
+                    style={{ width: `${fuelPct}%`, background: fuelBarColor(fuelPct) }}
+                  />
+                </div>
+              </>
+            )}
+          </div>
         </div>
-
-        {stations && stations.length > 0 && (
-          <div>
-            <div className="text-slate-500 text-[10px] uppercase tracking-wider mb-2">Маршрут</div>
-            <div className="flex items-start gap-1.5">
-              <div className="flex flex-col items-center pt-0.5 flex-shrink-0">
-                {stations.map((_, i) => (
-                  <div key={i} className="flex flex-col items-center">
-                    <div className={`w-2 h-2 rounded-full border ${i === 0 || i === stations.length - 1 ? 'border-cyan-400 bg-cyan-400' : 'border-slate-500 bg-slate-800'}`} />
-                    {i < stations.length - 1 && <div className="w-px h-3 bg-slate-700" />}
-                  </div>
-                ))}
-              </div>
-              <div className="flex flex-col gap-1.5">
-                {stations.map((st, i) => (
-                  <div key={i} className={`text-xs leading-none ${i === 0 || i === stations.length - 1 ? 'text-cyan-400 font-semibold' : 'text-slate-400'}`}>
-                    {st}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
-}
+});
 

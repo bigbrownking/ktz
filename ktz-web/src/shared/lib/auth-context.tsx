@@ -22,6 +22,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(loadSession());
   }, []);
 
+  useEffect(() => {
+    const sync = () => setSession(loadSession());
+    window.addEventListener('ktz-session-updated', sync);
+    return () => window.removeEventListener('ktz-session-updated', sync);
+  }, []);
+
   const logout = () => {
     clearSession();
     setSession(null);

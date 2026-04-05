@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.ktz.ktzgateway.security.JwtAuthFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
@@ -12,6 +13,7 @@ import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.springframework.web.cors.reactive.CorsConfigurationSource;
 import reactor.core.publisher.Mono;
 @Configuration
 @EnableWebFluxSecurity
@@ -19,12 +21,15 @@ import reactor.core.publisher.Mono;
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final CorsConfigurationSource corsConfigurationSource;
 
     @Bean
     public SecurityWebFilterChain filterChain(ServerHttpSecurity http) {
         return http
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .authorizeExchange(ex -> ex
+                        .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .pathMatchers("/auth/**").permitAll()
                         .pathMatchers(
                                 "/",
@@ -42,8 +47,17 @@ public class SecurityConfig {
                                 "/history/v3/api-docs",
                                 "/history/v3/api-docs/**"
                         ).permitAll()
+                        .pathMatchers(
+                                "/actuator",
+                                "/actuator/**",
+                                "/simulator/actuator/**",
+                                "/telemetry/actuator/**",
+                                "/history/actuator/**"
+                        ).permitAll()
                         .pathMatchers(org.springframework.http.HttpMethod.GET,
                                 "/route", "/route/**", "/locomotive", "/locomotive/**").permitAll()
+                        .pathMatchers(org.springframework.http.HttpMethod.POST, "/route", "/locomotive")
+                                .hasAnyRole("USER", "ADMIN")
                         .pathMatchers(org.springframework.http.HttpMethod.GET, "/user", "/user/**").hasRole("ADMIN")
                         .pathMatchers("/user/**").hasRole("ADMIN")
                         .pathMatchers("/route/**", "/locomotive/**").hasAnyRole("USER", "ADMIN")

@@ -29,7 +29,16 @@ export interface HealthFactor {
   contribution: number;
 }
 
+/** Соответствует модели на бэке: один тепловоз или один электровоз, не оба. */
+export type LocomotiveType = 'TE33A' | 'KZ8A';
+
+export function locomotiveTypeFromNumber(locoNumber: string): LocomotiveType {
+  return locoNumber.startsWith('KZ') ? 'KZ8A' : 'TE33A';
+}
+
 export interface TelemetryData {
+  /** Тип локомотива из телеметрии/настроек — от него зависят вкладки кабины */
+  locomotiveType: LocomotiveType;
   health: number;
   healthFactors: HealthFactor[];
   healthCategory: 'Норма' | 'Внимание' | 'Критично';
@@ -79,6 +88,7 @@ export interface TelemetryData {
 }
 
 export const STABLE_TELEMETRY: TelemetryData = {
+  locomotiveType: 'TE33A',
   health: 85,
   healthFactors: [],
   healthCategory: 'Норма',
@@ -160,7 +170,8 @@ const recommendations: Recommendation[] = [
   },
 ];
 
-const allAlerts: Alert[] = [
+/** Каталог демо-алертов (офлайн-симуляция); синхронизируется с категорией здоровья в updateTelemetryData */
+export const allAlerts: Alert[] = [
   {
     id: '1',
     level: 'critical',
@@ -259,6 +270,10 @@ function calculateHealthFactors(data: Partial<TelemetryData>): HealthFactor[] {
 export function generateMockData(): TelemetryData {
   const stationPair = stations[Math.floor(Math.random() * stations.length)];
 
+  const locoNum =
+    typeof window !== 'undefined' ? localStorage.getItem('ktz_loco_number') ?? 'TE33A-001' : 'TE33A-001';
+  const locomotiveType = locomotiveTypeFromNumber(locoNum);
+
   const baseData = {
     speed: 70 + Math.random() * 20,
     temperature: 90 + Math.random() * 10,
@@ -275,6 +290,7 @@ export function generateMockData(): TelemetryData {
     totalHealth >= 85 ? 'Норма' : totalHealth >= 60 ? 'Внимание' : 'Критично';
 
   return {
+    locomotiveType,
     health: totalHealth,
     healthFactors: healthFactors.sort((a, b) => b.contribution - a.contribution),
     healthCategory,
@@ -366,10 +382,19 @@ export function updateTelemetryData(prev: TelemetryData): TelemetryData {
   const healthCategory: TelemetryData['healthCategory'] =
     totalHealth >= 85 ? 'Норма' : totalHealth >= 60 ? 'Внимание' : 'Критично';
 
+  const alertCount = healthCategory === 'Критично' ? 3 : healthCategory === 'Внимание' ? 2 : 1;
+  const alerts = allAlerts.slice(0, alertCount).map((a, i) => ({
+    ...a,
+    id: a.id,
+    timestamp: new Date(Date.now() - i * 40_000 - Math.random() * 25_000),
+  }));
+
   return {
     ...updated,
     health: totalHealth,
     healthFactors: healthFactors.sort((a, b) => b.contribution - a.contribution),
     healthCategory,
+    status: healthCategory === 'Норма' ? 'active' : healthCategory === 'Внимание' ? 'warning' : 'critical',
+    alerts,
   };
 }

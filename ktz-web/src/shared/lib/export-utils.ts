@@ -46,7 +46,7 @@ export async function exportPDF(buffer: TelemetrySnapshot[], locoNumber: string)
   doc.setTextColor(6, 182, 212);
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
-  doc.text('KINETIC OBSERVER — Telemetry Report', 14, 14);
+  doc.text('Telemetry Report', 14, 14);
 
   doc.setTextColor(148, 163, 184);
   doc.setFontSize(9);

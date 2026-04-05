@@ -57,7 +57,7 @@ export default function LoginPage() {
             <div className="w-10 h-10 bg-cyan-500/10 border border-cyan-500/30 rounded-xl flex items-center justify-center">
               <Activity className="w-5 h-5 text-cyan-400" />
             </div>
-            <span className="text-xl font-bold text-white tracking-widest">KINETIC OBSERVER</span>
+            <span className="text-xl font-bold text-white tracking-widest">Мониторинг локомотивов</span>
           </div>
           <p className="text-slate-500 text-xs text-center">
             Система мониторинга локомотивов КТЖ
@@ -121,7 +121,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-slate-700 text-xs mt-5">
-          © 2026 KTZ Kinetic Observer · v2.1
+          © 2026 KTZ Мониторинг локомотивов КТЖ · v2.1
         </p>
       </div>
     </div>

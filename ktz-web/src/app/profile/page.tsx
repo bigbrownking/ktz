@@ -9,7 +9,7 @@ import {
   Clock, Gauge, Heart, ChevronRight, LogIn,
 } from 'lucide-react';
 import Link from 'next/link';
-
+import Image from 'next/image';
 export default function ProfilePage() {
   const { session } = useAuth();
   const { telemetry, connected } = useTelemetryContext();
@@ -56,7 +56,7 @@ export default function ProfilePage() {
         <div className="flex items-start gap-6">
           <div className="relative flex-shrink-0">
             {session.photoUrl ? (
-              <img src={session.photoUrl} alt={displayName}
+              <Image src={session.photoUrl} alt={displayName}
                 className="w-24 h-24 rounded-2xl object-cover border-2 border-cyan-500/40" />
             ) : (
               <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-blue-500/20 border-2 border-cyan-500/40 flex items-center justify-center">
@@ -188,7 +188,7 @@ export default function ProfilePage() {
           <div className="space-y-2">
             {(isAdmin ? [
               { href: '/admin', label: 'Управление системой', icon: <Shield className="w-4 h-4 text-amber-400" />, desc: 'Локомотивы, маршруты, машинисты' },
-              { href: '/map', label: 'Карта флота', icon: <MapPin className="w-4 h-4 text-cyan-400" />, desc: 'Все поезда в реальном времени' },
+              { href: '/map', label: 'Карта', icon: <MapPin className="w-4 h-4 text-cyan-400" />, desc: 'Все поезда в реальном времени' },
               { href: '/reports', label: 'Отчёты', icon: <Activity className="w-4 h-4 text-green-400" />, desc: 'Аналитика и статистика' },
             ] : [
               { href: '/', label: 'Кабина', icon: <Gauge className="w-4 h-4 text-cyan-400" />, desc: 'Телеметрия локомотива' },

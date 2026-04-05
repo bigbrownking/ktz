@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { AlertTriangle, Clock, X } from 'lucide-react';
-import { Alert } from '@/shared/lib/mock-data';
+import { Alert, allAlerts } from '@/shared/lib/mock-data';
 
 interface Props {
   alerts: Alert[];
@@ -27,8 +27,52 @@ const formatTimestamp = (timestamp: Date) => {
   return timestamp.toLocaleString('ru-RU');
 };
 
+const SUMMARY_CARDS: {
+  countKey: 'critical' | 'warning' | 'info';
+  label: string;
+  sublabel: string;
+  card: string;
+  labelText: string;
+  accent: string;
+  icon: string;
+}[] = [
+  {
+    countKey: 'critical',
+    label: 'Критические',
+    sublabel: 'Требуют немедленного действия',
+    card: 'bg-gradient-to-br from-red-900/20 to-red-950/20 border border-red-500/30',
+    labelText: 'text-red-400',
+    accent: 'text-red-400',
+    icon: 'text-red-400',
+  },
+  {
+    countKey: 'warning',
+    label: 'Предупреждения',
+    sublabel: 'Требуют внимания',
+    card: 'bg-gradient-to-br from-orange-900/20 to-orange-950/20 border border-orange-500/30',
+    labelText: 'text-orange-400',
+    accent: 'text-orange-400',
+    icon: 'text-orange-400',
+  },
+  {
+    countKey: 'info',
+    label: 'Информация',
+    sublabel: 'Для справки',
+    card: 'bg-gradient-to-br from-blue-900/20 to-blue-950/20 border border-blue-500/30',
+    labelText: 'text-blue-400',
+    accent: 'text-blue-400',
+    icon: 'text-blue-400',
+  },
+];
+
 export function AlertsPanel({ alerts }: Props) {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [timeTick, setTimeTick] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setTimeTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const dismiss = (id: string) => setDismissed(prev => new Set([...prev, id]));
 
@@ -37,28 +81,56 @@ export function AlertsPanel({ alerts }: Props) {
   const warningAlerts = visible.filter(a => a.level === 'warning');
   const infoAlerts = visible.filter(a => a.level === 'info');
 
-  const historyItems = [
-    { time: '2 часа назад', title: 'Превышение температуры масла', level: 'warning' as const, source: 'Дизель' },
-    { time: '4 часа назад', title: 'Профилактическая проверка завершена', level: 'info' as const, source: 'Система' },
-    { time: '6 часов назад', title: 'Низкое напряжение аккумулятора', level: 'warning' as const, source: 'Электрика' },
-    { time: '10 часов назад', title: 'Плановое техобслуживание', level: 'info' as const, source: 'Обслуживание' },
-    { time: '15 часов назад', title: 'Обнаружена утечка в цилиндре 2', level: 'critical' as const, source: 'Тормоза' },
-  ];
+  const counts = useMemo(
+    () => ({
+      critical: criticalAlerts.length,
+      warning: warningAlerts.length,
+      info: infoAlerts.length,
+    }),
+    [criticalAlerts.length, warningAlerts.length, infoAlerts.length],
+  );
+
+  /** История: сначала активные, затем записи из каталога; время в рендере (тик 1 с) */
+  const seen = new Set<string>();
+  const historyRows: { key: string; title: string; level: Alert['level']; source: string; ts: Date }[] = [];
+  for (const a of visible) {
+    if (seen.has(a.title)) continue;
+    seen.add(a.title);
+    historyRows.push({
+      key: `a-${a.id}`,
+      title: a.title,
+      level: a.level,
+      source: a.source ?? 'Система',
+      ts: a.timestamp,
+    });
+  }
+  let k = 0;
+  for (const a of allAlerts) {
+    if (historyRows.length >= 6) break;
+    if (seen.has(a.title)) continue;
+    seen.add(a.title);
+    k += 1;
+    historyRows.push({
+      key: `c-${a.id}-${k}`,
+      title: a.title,
+      level: a.level,
+      source: a.source ?? 'Система',
+      ts: new Date(Date.now() - k * 2 * 3600000),
+    });
+  }
+
+  void timeTick;
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-3 gap-6">
-        {[
-          { count: criticalAlerts.length, label: 'Критические', sublabel: 'Требуют немедленного действия', color: 'red' },
-          { count: warningAlerts.length, label: 'Предупреждения', sublabel: 'Требуют внимания', color: 'orange' },
-          { count: infoAlerts.length, label: 'Информация', sublabel: 'Для справки', color: 'blue' },
-        ].map(({ count, label, sublabel, color }) => (
-          <div key={label} className={`bg-gradient-to-br from-${color}-900/20 to-${color}-950/20 border border-${color}-500/30 rounded-2xl p-6`}>
+        {SUMMARY_CARDS.map(({ countKey, label, sublabel, card, labelText, accent, icon }) => (
+          <div key={label} className={`rounded-2xl p-6 ${card}`}>
             <div className="flex items-center justify-between mb-2">
-              <div className={`text-sm text-${color}-400 uppercase tracking-wider`}>{label}</div>
-              <AlertTriangle className={`w-5 h-5 text-${color}-400`} />
+              <div className={`text-sm uppercase tracking-wider ${labelText}`}>{label}</div>
+              <AlertTriangle className={`w-5 h-5 ${icon}`} />
             </div>
-            <div className={`text-4xl font-bold text-${color}-400`}>{count}</div>
+            <div className={`text-4xl font-bold ${accent}`}>{counts[countKey]}</div>
             <div className="text-sm text-slate-400 mt-2">{sublabel}</div>
           </div>
         ))}
@@ -119,11 +191,11 @@ export function AlertsPanel({ alerts }: Props) {
       <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-2xl p-6">
         <h3 className="text-lg font-semibold text-cyan-400 mb-4">История за последние 24 часа</h3>
         <div className="space-y-2">
-          {historyItems.map((item, idx) => {
+          {historyRows.map((item) => {
             const colors = getAlertColor(item.level);
             return (
               <div
-                key={idx}
+                key={item.key}
                 className="flex items-center gap-4 p-3 bg-slate-900/50 border border-slate-800 rounded-lg hover:bg-slate-800/50 transition-colors"
               >
                 <div className={`w-2 h-2 rounded-full ${colors.text.replace('text-', 'bg-')}`} />
@@ -131,7 +203,7 @@ export function AlertsPanel({ alerts }: Props) {
                   <div className={`text-sm font-semibold ${colors.text}`}>{item.title}</div>
                   <div className="text-xs text-slate-500">{item.source}</div>
                 </div>
-                <div className="text-xs text-slate-500">{item.time}</div>
+                <div className="text-xs text-slate-500 whitespace-nowrap">{formatTimestamp(item.ts)}</div>
               </div>
             );
           })}

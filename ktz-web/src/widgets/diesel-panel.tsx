@@ -118,7 +118,7 @@ export function DieselPanel({ telemetry }: Props) {
           <div>
             <div className="text-sm text-slate-500 mb-1">Обороты</div>
             <div className={`text-2xl font-bold ${getStatusColor(telemetry.turbineSpeed, 10000, 15000, 13000)}`}>
-              {Math.round(telemetry.turbineSpeed).toLocaleString()} об/мин
+              {Math.round(telemetry.turbineSpeed).toLocaleString('ru-RU')} об/мин
             </div>
           </div>
           <div>

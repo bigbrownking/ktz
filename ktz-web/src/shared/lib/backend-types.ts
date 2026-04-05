@@ -52,5 +52,7 @@ export interface BackendMapPoint {
   latitude: number;
   longitude: number;
   speed: number;
+  /** Уровень топлива, % */
+  fuelLevel?: number;
   timestamp: string;
 }

@@ -3,7 +3,7 @@ package org.ktz.ktzgateway.security;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
@@ -25,6 +25,10 @@ public class JwtAuthFilter implements WebFilter {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
+        if (HttpMethod.OPTIONS.equals(exchange.getRequest().getMethod())) {
+            return chain.filter(exchange);
+        }
+
         String authHeader = exchange.getRequest()
                 .getHeaders()
                 .getFirst(HttpHeaders.AUTHORIZATION);
@@ -42,7 +46,8 @@ public class JwtAuthFilter implements WebFilter {
 
         try {
             String username = jwtTokenUtil.getUsernameFromToken(token);
-            String role     = jwtTokenUtil.parse(token).get("role", String.class);
+            String roleClaim = jwtTokenUtil.parse(token).get("role", String.class);
+            final String role = (roleClaim == null || roleClaim.isBlank()) ? "ROLE_USER" : roleClaim;
 
             var auth = new UsernamePasswordAuthenticationToken(
                     username,

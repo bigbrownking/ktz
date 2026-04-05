@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Train, Plus, Trash2, Edit2, Check, Upload,
-  MapPin, User, Mail, Calendar, Shield, X, RefreshCw,
+  MapPin, User, Mail, Calendar, Shield, X, RefreshCw, ExternalLink,
 } from 'lucide-react';
+import { setKtzLocoNumber } from '@/shared/lib/telemetry-context';
 import {
   routesApi, locomotivesApi, driversApi,
   ApiRoute, ApiLocomotive, ApiDriver,
@@ -61,6 +63,7 @@ export default function AdminPage() {
 }
 
 function LocomotivesTab() {
+  const router = useRouter();
   const [locos, setLocos] = useState<ApiLocomotive[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -68,11 +71,18 @@ function LocomotivesTab() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setLocos(await locomotivesApi.getAll()); } catch { }
+    try {
+      setLocos(await locomotivesApi.getAll());
+    } catch { }
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const openCabin = (locoNumber: string) => {
+    setKtzLocoNumber(locoNumber);
+    router.push(`/?loco=${encodeURIComponent(locoNumber)}`);
+  };
 
   const save = async () => {
     if (!form.number.trim()) return;
@@ -85,7 +95,10 @@ function LocomotivesTab() {
   };
 
   const remove = async (id: number) => {
-    try { await locomotivesApi.delete(id); setLocos(p => p.filter(l => l.id !== id)); } catch { }
+    try {
+      await locomotivesApi.delete(id);
+      setLocos(p => p.filter(l => l.id !== id));
+    } catch { }
   };
 
   return (
@@ -122,24 +135,54 @@ function LocomotivesTab() {
         </div>
       )}
 
+      <p className="text-sm text-slate-500">
+        Нажмите на строку — откроется кабина с телеметрией выбранного локомотива.
+      </p>
+
       <div className="space-y-3">
-        {locos.map(loco => (
-          <div key={loco.id} className="bg-[#0f1629] border border-[#1e2a45] rounded-xl p-4 flex items-center gap-4">
-            <div className="w-12 h-12 bg-cyan-500/10 border border-cyan-500/30 rounded-xl flex items-center justify-center">
-              <Train className="w-6 h-6 text-cyan-400" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-white">{loco.number}</span>
-                <span className="text-xs px-2 py-0.5 bg-slate-800 text-slate-400 rounded">{loco.type}</span>
+        {locos.map(loco => {
+          return (
+            <div
+              key={loco.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => openCabin(loco.number)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  openCabin(loco.number);
+                }
+              }}
+              className="bg-[#0f1629] border border-[#1e2a45] hover:border-cyan-500/40 rounded-xl p-4 flex items-center gap-4 cursor-pointer transition-colors group"
+            >
+              <div className="w-12 h-12 bg-cyan-500/10 border border-cyan-500/30 rounded-xl flex items-center justify-center shrink-0">
+                <Train className="w-6 h-6 text-cyan-400" />
               </div>
-              <div className="text-sm text-slate-400 mt-0.5">{loco.name}</div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-white">{loco.number}</span>
+                  <span className="text-xs px-2 py-0.5 bg-slate-800 text-slate-400 rounded">{loco.type}</span>
+                </div>
+                <div className="text-sm text-slate-400 mt-0.5 truncate">{loco.name}</div>
+              </div>
+              <span className="flex items-center gap-1 text-xs text-cyan-500/80 group-hover:text-cyan-400 shrink-0">
+                <ExternalLink className="w-3.5 h-3.5" />
+                Кабина
+              </span>
+              <button
+                type="button"
+                onClick={e => {
+                  e.stopPropagation();
+                  remove(loco.id);
+                }}
+                className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
+                title="Удалить"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
             </div>
-            <button onClick={() => remove(loco.id)} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors">
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

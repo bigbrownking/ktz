@@ -28,7 +28,7 @@ public class TelemetryWebSocketHandler implements WebSocketHandler {
         String path = session.getHandshakeInfo().getUri().getPath();
         String locomotiveNumber = path.substring(path.lastIndexOf('/') + 1);
 
-        log.info("WS client connected for locomotive: {}", locomotiveNumber);
+        log.info("WS client connected for locomotive: {} (session {})", locomotiveNumber, session.getId());
 
         return session.send(
                 telemetryService.getByLocomotiveNumber(locomotiveNumber)
@@ -40,8 +40,10 @@ public class TelemetryWebSocketHandler implements WebSocketHandler {
                                 return session.textMessage("{}");
                             }
                         })
-        ).doFinally(sig ->
-                log.info("WS client disconnected for locomotive: {}", locomotiveNumber)
-        );
+        )
+                .and(session.receive().then())
+                .doFinally(sig ->
+                        log.info("WS client disconnected for locomotive: {} (session {}, signal {})", locomotiveNumber, session.getId(), sig)
+                );
     }
 }

@@ -66,6 +66,44 @@ spring:
 
       routes:
 
+        # Actuator: префикс сервиса → /actuator на downstream
+
+        - id: simulator-actuator
+
+          uri: http://${SIMULATOR_HOST}:${SIMULATOR_PORT}
+
+          predicates:
+
+            - Path=/simulator/actuator,/simulator/actuator/**
+
+          filters:
+
+            - StripPrefix=1
+
+        - id: telemetry-actuator
+
+          uri: http://${TELEMETRY_HOST}:${TELEMETRY_PORT}
+
+          predicates:
+
+            - Path=/telemetry/actuator,/telemetry/actuator/**
+
+          filters:
+
+            - StripPrefix=1
+
+        - id: history-actuator
+
+          uri: http://${HISTORY_HOST}:${HISTORY_PORT}
+
+          predicates:
+
+            - Path=/history/actuator,/history/actuator/**
+
+          filters:
+
+            - StripPrefix=1
+
         # Group-style URLs (/v3/api-docs/{name})
 
         - id: openapi-alias-simulator

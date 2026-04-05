@@ -41,7 +41,7 @@ public class AuthServiceImpl implements AuthService {
         }
         String username = jwtTokenUtil.getUsernameFromToken(request.getRefreshToken());
         return userRepository.findByUsername(username)
-                .flatMap(user -> buildResponse(user, false))
+                .flatMap(user -> buildResponse(user, true))
                 .switchIfEmpty(Mono.error(
                         new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found")));
     }

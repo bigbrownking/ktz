@@ -49,6 +49,7 @@ public class TelemetryConsumer {
                 "latitude",         d.getLatitude(),
                 "longitude",        d.getLongitude(),
                 "speed",            d.getSpeed(),
+                "fuelLevel",        d.getFuelLevel(),
                 "timestamp",        d.getTimestamp() != null ? d.getTimestamp().toString() : ""
         );
     }
