@@ -15,4 +15,15 @@ public class RouteResponseDto {
     private Long locomotiveId;
     private String locomotiveName;
     private String locomotiveNumber;
+    private String stations;
+    private Integer distanceKm;
+    private Integer estimatedMinutes;
+    private Double startLat;
+    private Double startLon;
+    private Double endLat;
+    private Double endLon;
+    private String driverName;
+    private String driverSurname;
+    private Integer driverAge;
+    private String driverPhotoUrl;
 }

@@ -27,8 +27,7 @@ public class RouteServiceImpl implements RouteService {
     @Override
     public Mono<RouteResponseDto> create(RouteRequestDto dto) {
         Route route = mapper.mapToEntity(dto);
-        return routeRepository.save(route)
-                .flatMap(this::enrich);
+        return routeRepository.save(route).flatMap(this::enrich);
     }
 
     @Override
@@ -56,44 +55,54 @@ public class RouteServiceImpl implements RouteService {
 
     @Override
     public Flux<RouteResponseDto> getAll() {
-        return routeRepository.findAll()
-                .flatMap(this::enrich);
+        return routeRepository.findAll().flatMap(this::enrich);
     }
 
     @Override
     public Flux<RouteResponseDto> getAllSortedByDestination() {
-        return routeRepository.findAllByOrderByDestinationAsc()
-                .flatMap(this::enrich);
+        return routeRepository.findAllByOrderByDestinationAsc().flatMap(this::enrich);
     }
 
     @Override
     public Flux<RouteResponseDto> getByUserId(Long userId) {
-        return routeRepository.findByUserId(userId)
-                .flatMap(this::enrich);
+        return routeRepository.findByUserId(userId).flatMap(this::enrich);
     }
 
     private Mono<RouteResponseDto> enrich(Route route) {
-        Mono<String> usernameMono = route.getUserId() != null
-                ? userRepository.findById(route.getUserId())
-                .map(User::getUsername).defaultIfEmpty("")
-                : Mono.just("");
+        Mono<User> userMono = route.getUserId() != null
+                ? userRepository.findById(route.getUserId()).defaultIfEmpty(new User())
+                : Mono.just(new User());
 
         Mono<Locomotive> locoMono = route.getLocomotiveId() != null
-                ? locomotiveRepository.findById(route.getLocomotiveId())
-                .defaultIfEmpty(new Locomotive())
+                ? locomotiveRepository.findById(route.getLocomotiveId()).defaultIfEmpty(new Locomotive())
                 : Mono.just(new Locomotive());
 
-        return Mono.zip(usernameMono, locoMono)
-                .map(tuple -> RouteResponseDto.builder()
-                        .id(route.getId())
-                        .origin(route.getOrigin())
-                        .destination(route.getDestination())
-                        .status(route.getStatus())
-                        .userId(route.getUserId())
-                        .username(tuple.getT1())
-                        .locomotiveId(route.getLocomotiveId())
-                        .locomotiveName(tuple.getT2().getName())
-                        .locomotiveNumber(tuple.getT2().getNumber())
-                        .build());
+        return Mono.zip(userMono, locoMono)
+                .map(tuple -> {
+                    User u = tuple.getT1();
+                    Locomotive l = tuple.getT2();
+                    return RouteResponseDto.builder()
+                            .id(route.getId())
+                            .origin(route.getOrigin())
+                            .destination(route.getDestination())
+                            .status(route.getStatus())
+                            .userId(route.getUserId())
+                            .username(u.getUsername())
+                            .locomotiveId(route.getLocomotiveId())
+                            .locomotiveName(l.getName())
+                            .locomotiveNumber(l.getNumber())
+                            .stations(route.getStations())
+                            .distanceKm(route.getDistanceKm())
+                            .estimatedMinutes(route.getEstimatedMinutes())
+                            .startLat(route.getStartLat())
+                            .startLon(route.getStartLon())
+                            .endLat(route.getEndLat())
+                            .endLon(route.getEndLon())
+                            .driverName(u.getName())
+                            .driverSurname(u.getSurname())
+                            .driverAge(u.getAge())
+                            .driverPhotoUrl(u.getPhotoUrl())
+                            .build();
+                });
     }
 }

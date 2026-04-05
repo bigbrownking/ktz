@@ -5,6 +5,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.ktz.ktzgateway.dto.AuthResponse;
 import org.ktz.ktzgateway.dto.LoginRequest;
 import org.ktz.ktzgateway.dto.RefreshRequest;
+import org.ktz.ktzgateway.model.Locomotive;
+import org.ktz.ktzgateway.model.User;
 import org.ktz.ktzgateway.repository.LocomotiveRepository;
 import org.ktz.ktzgateway.repository.UserRepository;
 import org.ktz.ktzgateway.security.JwtTokenUtil;
@@ -27,26 +29,7 @@ public class AuthServiceImpl implements AuthService {
     public Mono<AuthResponse> login(LoginRequest request) {
         return userRepository.findByUsername(request.getUsername())
                 .filter(user -> passwordEncoder.matches(request.getPassword(), user.getPassword()))
-                .flatMap(user -> {
-                    if (user.getLocomotiveId() == null) {
-                        return Mono.just(AuthResponse.builder()
-                                .token(jwtTokenUtil.generateToken(
-                                        user.getUsername(), user.getRole(), null, null))
-                                .refreshToken(jwtTokenUtil.generateRefreshToken(user.getUsername()))
-                                .role(user.getRole())
-                                .build());
-                    }
-                    return locomotiveRepository.findById(user.getLocomotiveId())
-                            .map(loco -> AuthResponse.builder()
-                                    .token(jwtTokenUtil.generateToken(
-                                            user.getUsername(), user.getRole(),
-                                            loco.getNumber(), loco.getName()))
-                                    .refreshToken(jwtTokenUtil.generateRefreshToken(user.getUsername()))
-                                    .locomotiveName(loco.getName())
-                                    .locomotiveNumber(loco.getNumber())
-                                    .role(user.getRole())
-                                    .build());
-                })
+                .flatMap(user -> buildResponse(user, true))
                 .switchIfEmpty(Mono.error(
                         new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials")));
     }
@@ -56,29 +39,36 @@ public class AuthServiceImpl implements AuthService {
             return Mono.error(
                     new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid refresh token"));
         }
-
         String username = jwtTokenUtil.getUsernameFromToken(request.getRefreshToken());
-
         return userRepository.findByUsername(username)
-                .flatMap(user -> {
-                    if (user.getLocomotiveId() == null) {
-                        return Mono.just(AuthResponse.builder()
-                                .token(jwtTokenUtil.generateToken(
-                                        user.getUsername(), user.getRole(), null, null))
-                                .role(user.getRole())
-                                .build());
-                    }
-                    return locomotiveRepository.findById(user.getLocomotiveId())
-                            .map(loco -> AuthResponse.builder()
-                                    .token(jwtTokenUtil.generateToken(
-                                            user.getUsername(), user.getRole(),
-                                            loco.getNumber(), loco.getName()))
-                                    .locomotiveName(loco.getName())
-                                    .locomotiveNumber(loco.getNumber())
-                                    .role(user.getRole())
-                                    .build());
-                })
+                .flatMap(user -> buildResponse(user, false))
                 .switchIfEmpty(Mono.error(
                         new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found")));
+    }
+
+    private Mono<AuthResponse> buildResponse(User user, boolean includeRefresh) {
+        Mono<Locomotive> locoMono = user.getLocomotiveId() != null
+                ? locomotiveRepository.findById(user.getLocomotiveId()).defaultIfEmpty(new Locomotive())
+                : Mono.just(new Locomotive());
+
+        return locoMono.map(loco -> {
+            String token = jwtTokenUtil.generateToken(
+                    user.getUsername(), user.getRole(), loco.getNumber(), loco.getName());
+            AuthResponse.AuthResponseBuilder b = AuthResponse.builder()
+                    .token(token)
+                    .role(user.getRole())
+                    .userId(user.getId())
+                    .username(user.getUsername())
+                    .name(user.getName())
+                    .surname(user.getSurname())
+                    .photoUrl(user.getPhotoUrl())
+                    .age(user.getAge())
+                    .locomotiveName(loco.getName())
+                    .locomotiveNumber(loco.getNumber());
+            if (includeRefresh) {
+                b.refreshToken(jwtTokenUtil.generateRefreshToken(user.getUsername()));
+            }
+            return b.build();
+        });
     }
 }

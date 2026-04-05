@@ -38,20 +38,17 @@ public class Mapper {
         Route route = new Route();
         route.setOrigin(dto.getOrigin());
         route.setDestination(dto.getDestination());
-        route.setStatus(dto.getStatus() != null ? dto.getStatus() : "PLANNED");
+        route.setStatus(dto.getStatus() != null ? dto.getStatus() : "ACTIVE");
         route.setUserId(dto.getUserId());
+        route.setLocomotiveId(dto.getLocomotiveId());
+        route.setStations(dto.getStations());
+        route.setDistanceKm(dto.getDistanceKm());
+        route.setEstimatedMinutes(dto.getEstimatedMinutes());
+        route.setStartLat(dto.getStartLat());
+        route.setStartLon(dto.getStartLon());
+        route.setEndLat(dto.getEndLat());
+        route.setEndLon(dto.getEndLon());
         return route;
-    }
-
-    public RouteResponseDto mapToDto(Route route, String username) {
-        return RouteResponseDto.builder()
-                .id(route.getId())
-                .origin(route.getOrigin())
-                .destination(route.getDestination())
-                .status(route.getStatus())
-                .userId(route.getUserId())
-                .username(username)
-                .build();
     }
 
     public void updateEntity(User user, UserRequestDto dto) {
@@ -69,5 +66,13 @@ public class Mapper {
         route.setDestination(dto.getDestination());
         route.setStatus(dto.getStatus() != null ? dto.getStatus() : route.getStatus());
         route.setUserId(dto.getUserId());
+        route.setLocomotiveId(dto.getLocomotiveId());
+        route.setStations(dto.getStations());
+        route.setDistanceKm(dto.getDistanceKm());
+        route.setEstimatedMinutes(dto.getEstimatedMinutes());
+        route.setStartLat(dto.getStartLat());
+        route.setStartLon(dto.getStartLon());
+        route.setEndLat(dto.getEndLat());
+        route.setEndLon(dto.getEndLon());
     }
 }

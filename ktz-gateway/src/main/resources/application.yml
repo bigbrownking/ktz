@@ -1,92 +1,212 @@
 server:
+
   port: ${SERVER_PORT}
 
+
+
 minio:
+
   url: ${MINIO_URL}
+
   access-key: ${MINIO_USER}
+
   secret-key: ${MINIO_PASSWORD}
+
   bucket: ${MINIO_BUCKET}
 
+
+
 spring:
+
   application:
+
     name: ktz-gateway
+
   r2dbc:
+
     url: ${R2DBC_URL}
+
     username: ${POSTGRES_USER}
+
     password: ${POSTGRES_PASSWORD}
+
   flyway:
+
     url: ${FLYWAY_URL}
+
     user: ${POSTGRES_USER}
+
     password: ${POSTGRES_PASSWORD}
+
     locations: classpath:db/migration
+
     baseline-on-migrate: true
+
     baseline-version: 0
+
     enabled: true
+
   data:
+
     redis:
+
       host: ${SPRING_DATA_REDIS_HOST}
+
       port: ${SPRING_DATA_REDIS_PORT}
+
   cloud:
+
     gateway:
+
       default-filters:
+
         - DedupeResponseHeader=Access-Control-Allow-Credentials Access-Control-Allow-Origin
 
+
+
       routes:
-        - id: simulator
+
+        # Group-style URLs (/v3/api-docs/{name})
+
+        - id: openapi-alias-simulator
+
           uri: http://${SIMULATOR_HOST}:${SIMULATOR_PORT}
+
           predicates:
-            - Path=/simulator/**
+
+            - Path=/v3/api-docs/simulator
+
           filters:
-            - StripPrefix=1
-        - id: telemetry
+
+            - SetPath=/v3/api-docs
+
+        - id: openapi-alias-telemetry
+
           uri: http://${TELEMETRY_HOST}:${TELEMETRY_PORT}
+
           predicates:
-            - Path=/telemetry/**
+
+            - Path=/v3/api-docs/telemetry
+
           filters:
-            - StripPrefix=1
-        - id: history
+
+            - SetPath=/v3/api-docs
+
+        - id: openapi-alias-history
+
           uri: http://${HISTORY_HOST}:${HISTORY_PORT}
+
           predicates:
-            - Path=/history/**
+
+            - Path=/v3/api-docs/history
+
           filters:
-            - StripPrefix=1
+
+            - SetPath=/v3/api-docs
+
+        # OpenAPI JSON: strip service prefix so backend receives /v3/api-docs
+
         - id: simulator-docs
+
           uri: http://${SIMULATOR_HOST}:${SIMULATOR_PORT}
+
           predicates:
-            - Path=/simulator/v3/api-docs/**
+
+            - Path=/simulator/v3/api-docs,/simulator/v3/api-docs/**
+
           filters:
+
             - StripPrefix=1
+
         - id: telemetry-docs
+
           uri: http://${TELEMETRY_HOST}:${TELEMETRY_PORT}
+
           predicates:
-            - Path=/telemetry/v3/api-docs/**
+
+            - Path=/telemetry/v3/api-docs,/telemetry/v3/api-docs/**
+
           filters:
+
             - StripPrefix=1
+
         - id: history-docs
+
           uri: http://${HISTORY_HOST}:${HISTORY_PORT}
+
           predicates:
-            - Path=/history/v3/api-docs/**
+
+            - Path=/history/v3/api-docs,/history/v3/api-docs/**
+
           filters:
+
             - StripPrefix=1
+
+        # APIs: full path preserved (/telemetry/..., /simulator/..., /history/...)
+
+        - id: simulator
+
+          uri: http://${SIMULATOR_HOST}:${SIMULATOR_PORT}
+
+          predicates:
+
+            - Path=/simulator/**
+
+        - id: telemetry
+
+          uri: http://${TELEMETRY_HOST}:${TELEMETRY_PORT}
+
+          predicates:
+
+            - Path=/telemetry/**
+
+        - id: history
+
+          uri: http://${HISTORY_HOST}:${HISTORY_PORT}
+
+          predicates:
+
+            - Path=/history/**
+
+
 
 jwt:
+
   secret: ${JWT_SECRET}
+
   expiration: ${JWT_EXPIRATION}
+
   refresh:
+
     expiration: ${JWT_REFRESH_EXPIRATION}
 
+
+
 springdoc:
+
   swagger-ui:
+
     path: /swagger-ui.html
+
+    disable-swagger-default-url: true
+
     urls:
-      - name: gateway
-        url: /v3/api-docs
+
       - name: simulator
+
         url: /simulator/v3/api-docs
+
       - name: telemetry
+
         url: /telemetry/v3/api-docs
+
       - name: history
+
         url: /history/v3/api-docs
+
   api-docs:
+
     enabled: true
+
     path: /v3/api-docs
+

@@ -11,4 +11,10 @@ public class AuthResponse {
     private String locomotiveName;
     private String locomotiveNumber;
     private String role;
+    private Long userId;
+    private String username;
+    private String name;
+    private String surname;
+    private String photoUrl;
+    private int age;
 }

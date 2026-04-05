@@ -16,9 +16,17 @@ telemetry:
     - number: ${LOCO_1_NUMBER}
       type: ${LOCO_1_TYPE}
       name: ${LOCO_1_NAME}
+      start-lat: ${LOCO_1_START_LAT:51.18}
+      start-lon: ${LOCO_1_START_LON:71.45}
+      end-lat: ${LOCO_1_END_LAT:53.31}
+      end-lon: ${LOCO_1_END_LON:69.39}
     - number: ${LOCO_2_NUMBER}
       type: ${LOCO_2_TYPE}
       name: ${LOCO_2_NAME}
+      start-lat: ${LOCO_2_START_LAT:43.25}
+      start-lon: ${LOCO_2_START_LON:76.93}
+      end-lat: ${LOCO_2_END_LAT:42.30}
+      end-lon: ${LOCO_2_END_LON:69.60}
 
 springdoc:
   api-docs:

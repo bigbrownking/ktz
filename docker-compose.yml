@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   rabbitmq:
     image: rabbitmq:3.13-management
@@ -72,9 +70,17 @@ services:
       LOCO_1_NUMBER: ${LOCO_1_NUMBER}
       LOCO_1_TYPE: ${LOCO_1_TYPE}
       LOCO_1_NAME: ${LOCO_1_NAME}
+      LOCO_1_START_LAT: ${LOCO_1_START_LAT}
+      LOCO_1_START_LON: ${LOCO_1_START_LON}
+      LOCO_1_END_LAT: ${LOCO_1_END_LAT}
+      LOCO_1_END_LON: ${LOCO_1_END_LON}
       LOCO_2_NUMBER: ${LOCO_2_NUMBER}
       LOCO_2_TYPE: ${LOCO_2_TYPE}
       LOCO_2_NAME: ${LOCO_2_NAME}
+      LOCO_2_START_LAT: ${LOCO_2_START_LAT}
+      LOCO_2_START_LON: ${LOCO_2_START_LON}
+      LOCO_2_END_LAT: ${LOCO_2_END_LAT}
+      LOCO_2_END_LON: ${LOCO_2_END_LON}
 
   telemetry:
     build:

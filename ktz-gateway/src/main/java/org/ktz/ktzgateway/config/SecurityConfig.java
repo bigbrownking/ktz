@@ -28,17 +28,23 @@ public class SecurityConfig {
                         .pathMatchers("/auth/**").permitAll()
                         .pathMatchers(
                                 "/",
+                                "/swagger-ui",
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",
+                                "/v3/api-docs",
                                 "/v3/api-docs/**",
                                 "/webjars/**",
                                 "/swagger-resources/**",
+                                "/simulator/v3/api-docs",
                                 "/simulator/v3/api-docs/**",
+                                "/telemetry/v3/api-docs",
                                 "/telemetry/v3/api-docs/**",
+                                "/history/v3/api-docs",
                                 "/history/v3/api-docs/**"
                         ).permitAll()
+                        .pathMatchers(org.springframework.http.HttpMethod.GET, "/route/**", "/locomotive/**", "/user/**").permitAll()
                         .pathMatchers("/user/**").hasRole("ADMIN")
-                        .pathMatchers("/route/**").hasAnyRole("USER", "ADMIN")
+                        .pathMatchers("/route/**", "/locomotive/**").hasAnyRole("USER", "ADMIN")
                         .anyExchange().authenticated()
                 )
                 .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
