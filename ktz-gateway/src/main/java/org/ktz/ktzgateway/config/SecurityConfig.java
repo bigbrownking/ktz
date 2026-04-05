@@ -42,7 +42,9 @@ public class SecurityConfig {
                                 "/history/v3/api-docs",
                                 "/history/v3/api-docs/**"
                         ).permitAll()
-                        .pathMatchers(org.springframework.http.HttpMethod.GET, "/route/**", "/locomotive/**", "/user/**").permitAll()
+                        .pathMatchers(org.springframework.http.HttpMethod.GET,
+                                "/route", "/route/**", "/locomotive", "/locomotive/**").permitAll()
+                        .pathMatchers(org.springframework.http.HttpMethod.GET, "/user", "/user/**").hasRole("ADMIN")
                         .pathMatchers("/user/**").hasRole("ADMIN")
                         .pathMatchers("/route/**", "/locomotive/**").hasAnyRole("USER", "ADMIN")
                         .anyExchange().authenticated()

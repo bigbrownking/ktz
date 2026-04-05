@@ -57,7 +57,10 @@ export interface ApiDriver {
 }
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${API}${path}`, { cache: 'no-store' });
+  const res = await fetch(`${API}${path}`, {
+    cache: 'no-store',
+    headers: { ...authHeaders() },
+  });
   if (!res.ok) throw new Error(`GET ${path} → ${res.status}`);
   return res.json();
 }
