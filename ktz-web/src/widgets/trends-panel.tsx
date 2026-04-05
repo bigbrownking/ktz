@@ -6,7 +6,7 @@ import {
   ResponsiveContainer, Legend,
 } from 'recharts';
 import { TrendingUp } from 'lucide-react';
-import { useTelemetryContext } from '@/shared/lib/telemetry-context';
+import { TELEMETRY_BUFFER_MS, useTelemetryContext } from '@/shared/lib/telemetry-context';
 
 const tooltipStyle = {
   contentStyle: {
@@ -22,24 +22,25 @@ function formatTick(ts: number) {
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
 }
 
-type TimeRange = '1h' | '4h' | '8h' | '24h';
+/** Окна внутри буфера (~15 мин). Раньше были 1–24 ч — шире буфера, фильтр ничего не менял. */
+type TimeRange = '1m' | '3m' | '5m' | '15m';
 
 const RANGE_MS: Record<TimeRange, number> = {
-  '1h': 60 * 60 * 1000,
-  '4h': 4 * 60 * 60 * 1000,
-  '8h': 8 * 60 * 60 * 1000,
-  '24h': 24 * 60 * 60 * 1000,
+  '1m': 60 * 1000,
+  '3m': 3 * 60 * 1000,
+  '5m': 5 * 60 * 1000,
+  '15m': TELEMETRY_BUFFER_MS,
 };
 
 export function TrendsPanel() {
   const { buffer } = useTelemetryContext();
-  const [timeRange, setTimeRange] = useState<TimeRange>('4h');
+  const [timeRange, setTimeRange] = useState<TimeRange>('5m');
 
   const labelMap: Record<TimeRange, string> = {
-    '1h': '1 ч',
-    '4h': '4 ч',
-    '8h': '8 ч',
-    '24h': '24 ч',
+    '1m': '1 мин',
+    '3m': '3 мин',
+    '5m': '5 мин',
+    '15m': '15 мин',
   };
 
   const data = useMemo(() => {
@@ -69,12 +70,12 @@ export function TrendsPanel() {
             Тренды параметров
           </h3>
           <p className="mt-1 text-xs text-slate-500">
-            Графики строятся по реальному буферу телеметрии (до 15 минут). Диапазон ниже обрезает окно от «сейчас» назад;
-            если точек мало, отображается всё, что есть в буфере.
+            Графики по буферу телеметрии (до 15 минут). Кнопки ниже задают окно от «сейчас» назад внутри этого буфера
+            (не дольше 15 мин — столько данных хранится в памяти).
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {(['1h', '4h', '8h', '24h'] as TimeRange[]).map((range) => (
+          {(['1m', '3m', '5m', '15m'] as TimeRange[]).map((range) => (
             <button
               key={range}
               type="button"

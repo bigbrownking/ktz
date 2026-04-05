@@ -38,7 +38,10 @@ export function setKtzLocoNumber(number: string) {
 
 const FUEL_MAX_LITERS = 5000;
 const WATER_MAX_LITERS = 5000;
-const BUFFER_MS = 15 * 60 * 1000;
+
+/** Сколько миллисекунд телеметрии держим в буфере (тренды, replay и т.д.) */
+export const TELEMETRY_BUFFER_MS = 15 * 60 * 1000;
+const BUFFER_MS = TELEMETRY_BUFFER_MS;
 
 function mapToFrontend(raw: BackendTelemetry, health: BackendHealth | null): TelemetryData {
   const isTE33A = raw.type === 'TE33A';

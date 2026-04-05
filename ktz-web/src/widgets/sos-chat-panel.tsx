@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, AlertOctagon, MessageSquare, X, CheckCheck, User, Users } from 'lucide-react';
 import { loadSession } from '@/shared/lib/auth-store';
 import { connectBidirectionalWs } from '@/shared/lib/ws-client';
-import { driversApi, ApiDriver } from '@/shared/lib/api-client';
+import { driversApi, chatApi, ApiDriver, ApiChatMessage } from '@/shared/lib/api-client';
 
 interface ChatMessage {
   id: string;
@@ -18,6 +18,7 @@ interface ChatMessage {
 }
 
 interface WsMessage {
+  messageId?: string | number;
   senderId?: string | number;
   senderName?: string;
   senderRole?: string;
@@ -44,6 +45,19 @@ function normalizeId(v: unknown): string {
   return t;
 }
 
+function mapApiToChat(m: ApiChatMessage): ChatMessage {
+  return {
+    id: String(m.id),
+    senderId: String(m.senderId),
+    senderName: m.senderName,
+    senderRole: m.senderRole === 'dispatcher' ? 'dispatcher' : 'driver',
+    text: m.text,
+    timestamp: new Date(m.createdAt),
+    type: (m.type === 'sos' || m.type === 'alert' ? m.type : 'message') as ChatMessage['type'],
+    threadId: String(m.threadUserId),
+  };
+}
+
 interface Props {
   role?: 'driver' | 'dispatcher';
 }
@@ -55,10 +69,13 @@ export function SosChatPanel({ role = 'driver' }: Props) {
   const [sosConfirm, setSosConfirm] = useState(false);
   const [sosSent, setSosSent] = useState(false);
   const [unread, setUnread] = useState(0);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const sendRef = useRef<((msg: unknown) => void) | null>(null);
   const isOpenRef = useRef(false);
+  const seenMessageIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => { isOpenRef.current = isOpen; }, [isOpen]);
 
   const session = loadSession();
@@ -102,6 +119,30 @@ export function SosChatPanel({ role = 'driver' }: Props) {
     return () => { cancelled = true; };
   }, [myRole, isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    if (myRole === 'dispatcher' && selectedDriverId === null) return;
+    let cancelled = false;
+    const tid = myRole === 'dispatcher' ? selectedDriverId : undefined;
+    setLoadError(null);
+    chatApi.getMessages(tid)
+      .then(rows => {
+        if (cancelled) return;
+        const mapped = rows.map(mapApiToChat);
+        setMessages(mapped);
+        seenMessageIdsRef.current = new Set(mapped.map(m => m.id));
+        setLoadError(null);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setMessages([]);
+        const msg = e instanceof Error ? e.message : 'Не удалось загрузить историю';
+        setLoadError(msg);
+        console.error('[chat] load history', e);
+      });
+    return () => { cancelled = true; };
+  }, [isOpen, myRole, selectedDriverId]);
+
   const handleIncoming = useCallback((raw: unknown) => {
     const session = loadSession();
     const myIdStr = session?.userId != null ? String(session.userId) : 'guest';
@@ -109,6 +150,8 @@ export function SosChatPanel({ role = 'driver' }: Props) {
 
     const data = raw as WsMessage;
     if (!data?.text) return;
+    const serverMid = data.messageId != null ? String(data.messageId) : '';
+    if (serverMid && seenMessageIdsRef.current.has(serverMid)) return;
     const sr = strId(data.senderRole).toLowerCase();
     const isDispatcherMsg = sr === 'dispatcher';
     let tid = normalizeId(data.threadId);
@@ -116,7 +159,7 @@ export function SosChatPanel({ role = 'driver' }: Props) {
       tid = normalizeId(data.senderId);
     }
     const incoming: ChatMessage = {
-      id: `${Date.now()}-${Math.random()}`,
+      id: serverMid || `${Date.now()}-${Math.random()}`,
       senderId: strId(data.senderId) || 'unknown',
       senderName: data.senderName ?? (isDispatcherMsg ? 'Диспетчер' : 'Машинист'),
       senderRole: isDispatcherMsg ? 'dispatcher' : 'driver',
@@ -135,6 +178,7 @@ export function SosChatPanel({ role = 'driver' }: Props) {
     if (roleHere === 'dispatcher') {
       if (!tid) return;
       setMessages(prev => [...prev, incoming]);
+      if (serverMid) seenMessageIdsRef.current.add(serverMid);
       const cur = selectedDriverIdRef.current;
       const open = isOpenRef.current;
       if (!open || cur === null || tid !== normalizeId(cur)) {
@@ -144,6 +188,7 @@ export function SosChatPanel({ role = 'driver' }: Props) {
     }
 
     setMessages(prev => [...prev, incoming]);
+    if (serverMid) seenMessageIdsRef.current.add(serverMid);
     if (!isOpenRef.current) setUnread(n => n + 1);
   }, []);
 
@@ -153,7 +198,7 @@ export function SosChatPanel({ role = 'driver' }: Props) {
     return () => { conn.close(); setWsConnected(false); sendRef.current = null; };
   }, [handleIncoming]);
 
-  const sendMessage = useCallback((text: string, type: ChatMessage['type'] = 'message') => {
+  const sendMessage = useCallback(async (text: string, type: ChatMessage['type'] = 'message') => {
     if (!text.trim()) return;
     const s = loadSession();
     const sendMyId = s?.userId != null ? String(s.userId) : 'guest';
@@ -163,32 +208,36 @@ export function SosChatPanel({ role = 'driver' }: Props) {
       : (role === 'driver' ? 'Машинист' : 'Диспетчер');
 
     if (sendRole === 'dispatcher' && selectedDriverId === null) return;
+    if (sendMyId === 'guest') return;
 
-    const threadId = sendRole === 'driver' ? sendMyId : normalizeId(selectedDriverId);
+    setSendError(null);
+    try {
+      const saved = await chatApi.send({
+        threadUserId: sendRole === 'dispatcher' ? selectedDriverId : undefined,
+        text: text.trim(),
+        type,
+      });
+      const msg = mapApiToChat(saved);
+      seenMessageIdsRef.current.add(String(saved.id));
+      setMessages(prev => [...prev, msg]);
 
-    const msg: ChatMessage = {
-      id: Date.now().toString(),
-      senderId: sendMyId,
-      senderName: sendName,
-      senderRole: sendRole,
-      text: text.trim(),
-      timestamp: new Date(),
-      type,
-      threadId,
-    };
-    setMessages(prev => [...prev, msg]);
-
-    const payload: WsMessage = {
-      senderId: sendMyId,
-      senderName: sendName,
-      senderRole: sendRole,
-      text: text.trim(),
-      type,
-      timestamp: new Date().toISOString(),
-      threadId,
-    };
-
-    sendRef.current?.(payload);
+      const threadId = sendRole === 'driver' ? sendMyId : normalizeId(selectedDriverId);
+      const payload: WsMessage = {
+        messageId: saved.id,
+        senderId: sendMyId,
+        senderName: sendName,
+        senderRole: sendRole,
+        text: text.trim(),
+        type,
+        timestamp: new Date().toISOString(),
+        threadId,
+      };
+      sendRef.current?.(payload);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Не удалось сохранить сообщение';
+      setSendError(msg);
+      console.error('[chat]', e);
+    }
     setInput('');
   }, [role, selectedDriverId]);
 
@@ -196,13 +245,36 @@ export function SosChatPanel({ role = 'driver' }: Props) {
     if (!sosConfirm) { setSosConfirm(true); return; }
     setSosConfirm(false);
     setSosSent(true);
-    sendMessage(`🆘 SOS-СИГНАЛ! Машинист ${myName} сообщает об экстренной ситуации! Локомотив остановлен.`, 'sos');
+    void sendMessage(`🆘 SOS-СИГНАЛ! Машинист ${myName} сообщает об экстренной ситуации! Локомотив остановлен.`, 'sos');
     setIsOpen(true);
     setTimeout(() => setSosSent(false), 5000);
   }, [sosConfirm, myName, sendMessage]);
 
-  const formatTime = (d: Date) =>
-    d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  /** Как в WhatsApp/Telegram: сегодня — только часы:минуты; вчера — «Вчера, …»; иначе дата + время */
+  const formatChatTimestamp = (d: Date) => {
+    const now = new Date();
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startMsg = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diffDays = Math.round((startToday.getTime() - startMsg.getTime()) / 86400000);
+
+    const timeFmt = new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    const time = timeFmt.format(d);
+
+    if (diffDays === 0) return time;
+    if (diffDays === 1) return `Вчера, ${time}`;
+
+    const sameYear = d.getFullYear() === now.getFullYear();
+    if (sameYear) {
+      const dateFmt = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' });
+      return `${dateFmt.format(d)}, ${time}`;
+    }
+    const dateFmt = new Intl.DateTimeFormat('ru-RU', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+    return `${dateFmt.format(d)}, ${time}`;
+  };
 
   const isMyMsg = (m: ChatMessage) => normalizeId(m.senderId) === normalizeId(myId);
 
@@ -305,7 +377,7 @@ export function SosChatPanel({ role = 'driver' }: Props) {
                               {msg.senderName}
                             </span>
                             <span>·</span>
-                            <span suppressHydrationWarning>{formatTime(msg.timestamp)}</span>
+                            <span suppressHydrationWarning>{formatChatTimestamp(msg.timestamp)}</span>
                           </div>
                           <div style={{ fontSize: '14px', color: msg.type === 'sos' ? '#fca5a5' : '#e2e8f0', fontWeight: msg.type === 'sos' ? 600 : 400 }}>
                             {msg.text}
@@ -347,7 +419,7 @@ export function SosChatPanel({ role = 'driver' }: Props) {
                           {msg.senderName}
                         </span>
                         <span>·</span>
-                        <span suppressHydrationWarning>{formatTime(msg.timestamp)}</span>
+                        <span suppressHydrationWarning>{formatChatTimestamp(msg.timestamp)}</span>
                       </div>
                       <div style={{ fontSize: '14px', color: msg.type === 'sos' ? '#fca5a5' : '#e2e8f0', fontWeight: msg.type === 'sos' ? 600 : 400 }}>
                         {msg.text}
@@ -366,12 +438,17 @@ export function SosChatPanel({ role = 'driver' }: Props) {
           )}
 
           <div style={{ padding: '12px 16px', borderTop: '1px solid #2a2a2a', background: '#0f0f0f' }}>
+            {loadError && (
+              <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 10, fontSize: 12, color: '#fecaca', background: 'rgba(127,29,29,0.35)', border: '1px solid rgba(248,113,113,0.35)' }}>
+                {loadError}
+              </div>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <input
                 type="text"
                 value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { sendMessage(input); } }}
+                onChange={e => { setInput(e.target.value); if (sendError) setSendError(null); }}
+                onKeyDown={e => { if (e.key === 'Enter') { void sendMessage(input); } }}
                 placeholder={myRole === 'dispatcher' && selectedDriverId === null ? 'Сначала выберите машиниста…' : 'Написать сообщение…'}
                 disabled={myRole === 'dispatcher' && selectedDriverId === null}
                 style={{ flex: 1, background: '#1a1a1a', border: '1px solid #333', borderRadius: '12px', padding: '10px 16px', fontSize: '14px', color: '#e2e8f0', outline: 'none', opacity: myRole === 'dispatcher' && selectedDriverId === null ? 0.5 : 1 }}
@@ -380,13 +457,18 @@ export function SosChatPanel({ role = 'driver' }: Props) {
               />
               <button
                 type="button"
-                onClick={() => sendMessage(input)}
+                onClick={() => void sendMessage(input)}
                 disabled={!input.trim() || (myRole === 'dispatcher' && selectedDriverId === null)}
                 style={{ width: '40px', height: '40px', borderRadius: '12px', background: input.trim() && (myRole !== 'dispatcher' || selectedDriverId !== null) ? '#0891b2' : '#1a1a1a', border: 'none', cursor: input.trim() && (myRole !== 'dispatcher' || selectedDriverId !== null) ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
               >
                 <Send style={{ width: '16px', height: '16px', color: input.trim() && (myRole !== 'dispatcher' || selectedDriverId !== null) ? '#fff' : '#4b5563' }} />
               </button>
             </div>
+            {sendError && (
+              <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 10, fontSize: 12, color: '#fecaca', background: 'rgba(127,29,29,0.35)', border: '1px solid rgba(248,113,113,0.35)' }}>
+                {sendError}
+              </div>
+            )}
           </div>
         </div>
       )}

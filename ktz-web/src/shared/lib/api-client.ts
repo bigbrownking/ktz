@@ -168,6 +168,33 @@ export const locomotivesApi = {
   delete: (id: number) => del(`/locomotive/${id}`),
 };
 
+export interface ApiChatMessage {
+  id: number;
+  threadUserId: number;
+  senderId: number;
+  senderRole: string;
+  senderName: string;
+  text: string;
+  type: string;
+  createdAt: string;
+}
+
+export const chatApi = {
+  /** Диспетчер: threadUserId — id машиниста. Машинист: без параметра. */
+  getMessages: (threadUserId?: number | null) =>
+    get<ApiChatMessage[]>(
+      threadUserId != null && threadUserId !== undefined
+        ? `/chat/messages?threadUserId=${threadUserId}`
+        : '/chat/messages',
+    ),
+  send: (body: { threadUserId?: number | null; text: string; type?: string }) =>
+    post<ApiChatMessage>('/chat/messages', {
+      text: body.text,
+      type: body.type ?? 'message',
+      ...(body.threadUserId != null && body.threadUserId !== undefined ? { threadUserId: body.threadUserId } : {}),
+    }),
+};
+
 export const driversApi = {
   getAll: () => get<ApiDriver[]>('/user'),
   getById: (id: number) => get<ApiDriver>(`/user/${id}`),
